@@ -1,0 +1,5 @@
+{
+  "name": "Beastify.ai",
+  "description": "Craft Viral Thumbnails",
+  "requestFramePermissions": ["microphone", "camera", "geolocation"]
+}
