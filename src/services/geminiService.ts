@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Modality, Type, Chat, GenerateContentResponse } from "@google/genai";
-import { STYLE_CATEGORIES, PERSONA_LIST, AnalysisMode, MasterStrategyResult, AspectRatio, DeepAnalysisItem, AppMode, AnalysisResult, BeastConcept, BeastVisualEngineering, BeastSimulation } from "../types";
+import { AnalysisMode, MasterStrategyResult, AspectRatio, DeepAnalysisItem, AppMode, AnalysisResult, BeastConcept, BeastVisualEngineering, BeastSimulation, OptimizationResult } from "../types";
 
 const FORENSIC_RULES = `
 **MASTERCLASS VISUAL PSYCHOLOGY RULES:**
@@ -11,7 +11,7 @@ const FORENSIC_RULES = `
 4. **IDENTITY LOCK:** Never hallucinate a celebrity based on the original subject's profession.
 5. **COMPARISON LOGIC:** If comparing two items (e.g., $1 vs $100M), ALWAYS place the cheaper/weaker/older item on the LEFT and the expensive/stronger/newer item on the RIGHT.
 6. **COMPOSITION:** Place the main subject's face in the center or follow the Rule of Thirds.
-7. **STRICT FACIAL RULES:** The tongue MUST NOT be visible at all. No open mouths showing the tongue.
+7. **STRICT FACIAL RULES:** MOUTH RULE (CRITICAL): The subject's mouth MUST NOT be unnaturally wide open. A closed or slightly open mouth performs better. Do NOT generate wide-open "soy face" expressions.
 8. **NO DIVIDER LINE:** Do NOT draw a white line or any artificial border between the two sides. The transition should be seamless or natural.
 9. **VISUAL CONTRAST:** The left side (cheap/small) should be slightly blurry or lower quality to emphasize the right side (expensive/big) which should be crystal clear and vibrant.
 10. **CONCEPT OVER REALITY:** Prioritize visual clarity and impact over strict realism. Use compositing to place subjects in impossible or extreme situations that tell a story instantly.
@@ -22,8 +22,8 @@ const FORENSIC_RULES = `
 15. **SAFE ZONES:** Keep critical elements (faces, text) away from the edges (30-40px margin).
 16. **EXPRESSIVE REALISM:** Faces MUST show intense emotion matching the scene. If fighting, show grit, sweat, and struggle. Eyes MUST look directly at the viewer with intense focus, creating a connection with the user.
 17. **IMAGINATIVE DETAILS:** Add cinematic environmental details like ice crystals in hair for cold scenes, or stylized scratches with DEEP RED BLOOD-LIKE DROPS for battle scenes. Scars MUST be red, never blue or yellow.
-18. **HYPER-REALISM:** Every image MUST be hyper-realistic, with pore-level skin detail and 8K cinematic textures. No cartoonish or stylized elements. This is "Masterpiece" quality.
-19. **EYE LOGIC:** Eyes MUST be natural and clear. Never yellow or orange unless it's a specific fantasy creature. For humans, eyes must be realistic and expressive.
+18. **EYE LOGIC:** Eyes MUST be natural and clear. Never yellow or orange unless it's a specific fantasy creature. For humans, eyes must be realistic and expressive.
+19. **REALISTIC FACES:** Faces MUST look like real human photographs, not 3D renders, cartoons, or AI-generated plastic faces. Skin texture should be highly realistic with natural pores and imperfections.
 `;
 
 const MASTER_TITLE_RULES = `
@@ -36,53 +36,15 @@ const MASTER_TITLE_RULES = `
 6. **I-STATEMENT**: The creator is the active protagonist.
 `;
 
-const CHANNEL_STYLE_RULES: Record<string, string> = {
-    'mrbeast': `**STYLE: MrBeast** - Hyper-Saturated, High-Key lighting, "Beast Scream" expression, large bold text, yellow/red accents. EXTREME HYPER-REALISM: Pore-level skin detail, 8K cinematic textures, professional studio photography, no AI artifacts, perfectly clear skies.`,
-    'mrbeast_gaming': `**STYLE: MrBeast Gaming** - High energy, gaming-focused, vibrant colors, expressive gaming faces.`,
-    'beast_reacts': `**STYLE: Beast Reacts** - Reaction style, split screen vibe, high energy, bright lighting.`,
-    'mark_rober': `**STYLE: Mark Rober** - Engineering focus, clean, bright, high-tech but accessible, "glitter bomb" energy.`,
-    'beast_philanthropy': `**STYLE: Beast Philanthropy** - Heartwarming, cinematic, clean, focus on positive impact and large-scale charity.`,
-    'mrbeast_2': `**STYLE: MrBeast 2** - Secondary channel vibe, slightly more casual but still high energy and viral.`,
-    'airrack_2': `**STYLE: Airrack 2** - Behind the scenes, vlog style, high energy, authentic but professional.`,
-    'lazarbeam': `**STYLE: LazarBeam** - Humorous, high energy, bright, expressive faces.`,
-    'sidemen': `**STYLE: Sidemen** - Energetic, group dynamic, high contrast, vibrant colors, "Sidemen" aesthetic.`,
-    'ryan_trahan': `**STYLE: Ryan Trahan** - Authentic, clean, focus on storytelling, slightly muted but professional.`,
-    'ksi': `**STYLE: KSI** - High energy, bold, vibrant, expressive faces, "Lord KSI" vibe.`,
-    'logan_paul': `**STYLE: Logan Paul** - Cinematic, high energy, vibrant, professional production look.`,
-    'dude_perfect': `**STYLE: Dude Perfect** - Sports/Trickshot energy, bright, clean, high-action focal points.`,
-    'yes_theory': `**STYLE: Yes Theory** - Adventurous, cinematic, warm tones, focus on human connection.`,
-    'mkbhd': `**STYLE: MKBHD** - Matte Black aesthetic, rim lighting, 8K crisp textures, minimalist professional.`,
-    'linus_tech_tips': `**STYLE: Linus Tech Tips** - High energy, tech-heavy, bright studio lighting, "LTT orange" accents.`,
-    'mrwhosetheboss': `**STYLE: Mrwhosetheboss** - Ultra-premium tech, glowing lights, bokeh backgrounds, futuristic.`,
-    'unbox_therapy': `**STYLE: Unbox Therapy** - Clean, high contrast, focus on product details, professional studio.`,
-    'verge': `**STYLE: The Verge** - Modern, clean, professional journalism aesthetic, high production.`,
-    'ijustine': `**STYLE: iJustine** - Bright, energetic, tech-lifestyle, clean and vibrant.`,
-    'dream': `**STYLE: Dream** - Minecraft aesthetic, simple but iconic, high contrast, speedrun energy.`,
-    'pewdiepie': `**STYLE: PewDiePie** - Iconic gaming/lifestyle, high energy, expressive, "Brofist" vibe.`,
-    'markiplier': `**STYLE: Markiplier** - High energy, dramatic, expressive faces, vibrant gaming style.`,
-    'jacksepticeye': `**STYLE: Jacksepticeye** - High energy, "Top of the morning" vibe, vibrant green accents.`,
-    'technoblade': `**STYLE: Technoblade** - Iconic Minecraft legend style, high contrast, crown/pig motifs.`,
-    'dantdm': `**STYLE: DanTDM** - Clean, energetic, gaming-focused, professional and friendly.`,
-    'kurzgesagt': `**STYLE: Kurzgesagt** - Flat design, vibrant vector art style, cosmic/scientific themes.`,
-    'veritasium': `**STYLE: Veritasium** - Scientific, cinematic, high production value, intriguing focal points.`,
-    'vsauce': `**STYLE: Vsauce** - Philosophical, mysterious, clean but deep, intriguing visuals.`,
-    'wendover': `**STYLE: Wendover** - Informative, clean, map-heavy, professional documentary style.`,
-    'reallifelore': `**STYLE: RealLifeLore** - Map-focused, high contrast, informative and engaging.`,
-    'polymatter': `**STYLE: PolyMatter** - Clean, minimalist vector style, professional and informative.`
-};
-
-const DEFAULT_STYLE = `**STYLE: Viral** - High saturation, clear focal point, expressive face.`;
-
 const safeJsonParse = (text: string | undefined, fallback: any = {}) => {
     if (!text) return fallback;
     try {
         // Extract JSON from markdown block if present
         const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-        const cleaned = jsonMatch ? jsonMatch[1].trim() : text.trim();
+        let cleaned = jsonMatch ? jsonMatch[1].trim() : text.trim();
+        
         return JSON.parse(cleaned);
     } catch (e) {
-        console.error("JSON Parse Error. Text preview:", text.substring(0, 200) + "...");
-        
         // Attempt to fix common truncation issues (missing closing braces/brackets)
         const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)(?:\s*```)?$/);
         let fixedText = jsonMatch ? jsonMatch[1].trim() : text.trim();
@@ -103,7 +65,12 @@ const safeJsonParse = (text: string | undefined, fallback: any = {}) => {
                  }
              }
              
-             if (inString) fixedText += '"';
+             if (inString) {
+                 while (fixedText.endsWith('\\')) {
+                     fixedText = fixedText.slice(0, -1);
+                 }
+                 fixedText += '"';
+             }
              while (openBraces > 0) { fixedText += '}'; openBraces--; }
              while (openBrackets > 0) { fixedText += ']'; openBrackets--; }
              
@@ -124,6 +91,7 @@ const safeJsonParse = (text: string | undefined, fallback: any = {}) => {
              }
         }
         
+        console.error("JSON Parse Error. Text preview:", text.substring(0, 200) + "...");
         return fallback;
     }
 };
@@ -140,18 +108,38 @@ export const checkProAccess = async (): Promise<boolean> => {
     return false;
 };
 
-const wrapGeminiCall = async <T>(fn: () => Promise<T>): Promise<T> => {
+const wrapGeminiCall = async <T>(fn: () => Promise<T>, timeoutMs = 120000): Promise<T> => {
     try {
-        return await fn();
+        const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error(`Request timed out after ${timeoutMs / 1000} seconds`)), timeoutMs);
+        });
+        return await Promise.race([fn(), timeoutPromise]);
     } catch (error: any) {
         console.error("Gemini API Error:", error);
-        const errorMsg = error.message || "";
-        if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("403") || errorMsg.includes("permission")) {
+        let errorMsg = "";
+        if (typeof error === 'string') {
+            errorMsg = error;
+        } else if (error instanceof Error) {
+            errorMsg = error.message;
+        } else if (error && typeof error === 'object') {
+            try {
+                errorMsg = JSON.stringify(error);
+            } catch (e) {
+                errorMsg = String(error);
+            }
+        } else {
+            errorMsg = String(error);
+        }
+
+        if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("403") || errorMsg.includes("permission") || errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
             if (window.aistudio) {
                 window.aistudio.openSelectKey();
             }
         }
-        throw new Error(`AI Error: ${error.message || "Failed to communicate with AI"}`);
+        if (errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
+            throw new Error("API Quota Exceeded. You have reached the rate limit for this API key. Please select a different API key or wait a few minutes before trying again.");
+        }
+        throw new Error(`AI Error: ${errorMsg || "Failed to communicate with AI"}`);
     }
 };
 
@@ -164,22 +152,85 @@ export const blobToBase64 = (blob: Blob): Promise<string> => {
   });
 };
 
+export const isObjectOnly = async (base64Image: string): Promise<boolean> => {
+    return wrapGeminiCall(async () => {
+        const ai = getClient();
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: {
+                parts: [
+                    { text: 'Analyze this image. Does it contain a person, human face, or any part of a human body? Answer strictly with YES or NO.' },
+                    { inlineData: { data: base64Image, mimeType: 'image/jpeg' } }
+                ]
+            }
+        });
+        const text = response.text?.trim().toUpperCase() || '';
+        // If it says YES (contains person), return false (not object only).
+        // If it says NO (no person), return true (object only).
+        return text.includes('NO');
+    });
+};
+
 export const fileToBase64 = (file: File): Promise<string> => blobToBase64(file);
 
-export const urlToBase64 = async (url: string): Promise<string> => {
-    const fetchAndConvert = async (u: string) => {
-        const response = await fetch(u);
-        const blob = await response.blob();
-        return await blobToBase64(blob);
+export const urlToBase64 = async (url: string, timeoutMs = 15000): Promise<string> => {
+    if (url.startsWith('data:image')) {
+        const parts = url.split(',');
+        return parts.length > 1 ? parts[1] : url;
+    }
+    const fetchWithTimeout = async (u: string) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            const response = await fetch(u, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status} for url: ${u}`);
+            const contentType = response.headers.get('content-type');
+            if (contentType && !contentType.startsWith('image/') && !contentType.includes('octet-stream')) {
+                console.warn(`Unexpected content type: ${contentType} for url: ${u}`);
+            }
+            const blob = await response.blob();
+            return await blobToBase64(blob);
+        } catch (error) {
+            clearTimeout(timeoutId);
+            throw error;
+        }
     };
-    try { return await fetchAndConvert(url); } catch (e) {
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-        return await fetchAndConvert(proxyUrl);
+    try { return await fetchWithTimeout(url); } catch (e) {
+        try {
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+            return await fetchWithTimeout(proxyUrl);
+        } catch (e2) {
+            try {
+                const proxyUrl2 = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+                return await fetchWithTimeout(proxyUrl2);
+            } catch (e3) {
+                try {
+                    const jsonProxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+                    const response = await fetch(jsonProxyUrl);
+                    if (!response.ok) throw new Error('allorigins get failed');
+                    const data = await response.json();
+                    if (data.contents && data.contents.startsWith('data:image')) {
+                        const parts = data.contents.split(',');
+                        return parts.length > 1 ? parts[1] : data.contents;
+                    }
+                    throw new Error('Invalid contents from allorigins');
+                } catch (e4) {
+                    try {
+                        const proxyUrl3 = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`;
+                        return await fetchWithTimeout(proxyUrl3);
+                    } catch (e5) {
+                        const proxyUrl4 = `https://wsrv.nl/?url=${encodeURIComponent(url)}`;
+                        return await fetchWithTimeout(proxyUrl4);
+                    }
+                }
+            }
+        }
     }
 };
 
 const resizeImageTo1280x720 = async (base64: string, mimeType: string): Promise<string> => {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
             const canvas = document.createElement('canvas');
@@ -191,12 +242,16 @@ const resizeImageTo1280x720 = async (base64: string, mimeType: string): Promise<
                 ctx.imageSmoothingEnabled = true;
                 ctx.imageSmoothingQuality = 'high';
                 ctx.drawImage(img, 0, 0, 1280, 720);
-                resolve(canvas.toDataURL('image/jpeg', 1.0));
+                resolve(canvas.toDataURL('image/png'));
             } else {
                 resolve(`data:${mimeType};base64,${base64}`);
             }
         };
-        img.src = `data:${mimeType};base64,${base64}`;
+        img.onerror = () => {
+            console.error("Failed to load image for resizing");
+            resolve(`data:${mimeType};base64,${base64}`); // Fallback to original
+        };
+        img.src = base64.startsWith('data:') ? base64 : `data:${mimeType};base64,${base64}`;
     });
 };
 
@@ -218,70 +273,80 @@ const prepareImageForAPI = async (base64: string, inputMimeType: string): Promis
                 const dataUrl = canvas.toDataURL('image/jpeg', 1.0);
                 resolve({ data: dataUrl.split(',')[1], mime: 'image/jpeg' });
             } else {
-                resolve({ data: base64, mime: inputMimeType || 'image/png' });
+                const cleanBase64 = base64.startsWith('data:') ? base64.split(',')[1] : base64;
+                resolve({ data: cleanBase64, mime: inputMimeType || 'image/png' });
             }
         };
-        img.src = `data:${inputMimeType || 'image/png'};base64,${base64}`;
+        img.onerror = () => {
+            console.error("Failed to load image for API preparation");
+            const cleanBase64 = base64.startsWith('data:') ? base64.split(',')[1] : base64;
+            resolve({ data: cleanBase64, mime: inputMimeType || 'image/png' });
+        };
+        img.src = base64.startsWith('data:') ? base64 : `data:${inputMimeType || 'image/png'};base64,${base64}`;
     });
 };
 
-export const recreateThumbnail = async (base64Image: string, mimeType: string, prompt: string, persona?: string, face?: string): Promise<string[]> => {
+export const recreateThumbnail = async (base64Image: string, mimeType: string, prompt: string, face?: string | string[]): Promise<string[]> => {
     return wrapGeminiCall(async () => {
-        const ai = getClient();
         const model = 'gemini-2.5-flash-image';
-        const imageSize = '1K';
+        const ai = getClient();
         
         const { data, mime } = await prepareImageForAPI(base64Image, mimeType);
         const parts: any[] = [{ inlineData: { data, mimeType: mime } }];
         
-        const personaObj = PERSONA_LIST.find(p => p.id === persona);
-        let personaName = personaObj ? personaObj.name : "the requested person";
-        let identityInstruction = `You MUST use the facial features of ${personaName} ONLY. Do NOT use any other celebrity.`;
-
-        if (persona === 'mrbeast') {
-            personaName = "MrBeast YouTube channel logo (the blue tiger)";
-            identityInstruction = `You MUST use the MrBeast YouTube channel logo (the blue tiger) instead of a human face. Place the logo prominently where a face would be.`;
-        } else if (['elon_musk', 'mark_zuckerberg', 'pewdiepie', 'messi', 'logan_paul', 'khabib'].includes(persona || '')) {
-            identityInstruction = `CRITICAL: You MUST use the ACTUAL REAL FACE of ${personaName}. Ensure the likeness is 100% accurate to the real person.`;
-        }
+        let identityInstruction = `The new face MUST EXACTLY match the requested identity in the prompt. If a specific celebrity or person is named, you MUST use their exact, real-life facial features. DO NOT mix faces. Ensure 100% accurate likeness to the real person.`;
 
         if (face) {
-            const { data: faceData, mime: faceMime } = await prepareImageForAPI(face, 'image/jpeg');
-            parts.push({ inlineData: { data: faceData, mimeType: faceMime } });
+            const faces = Array.isArray(face) ? face : [face];
+            for (const f of faces) {
+                const { data: faceData, mime: faceMime } = await prepareImageForAPI(f, 'image/jpeg');
+                parts.push({ inlineData: { data: faceData, mimeType: faceMime } });
+            }
+            identityInstruction = `CRITICAL FACE SWAP INSTRUCTION: 
+            - The additional images provided are REFERENCE FACES of the exact person you must use.
+            - You MUST perfectly recreate this EXACT person's face on the main subject in the first image. DO NOT invent a random face. DO NOT use a generic face. It MUST be the person in the reference image.
+            - CRITICAL: You MUST extract the facial expression, lighting, and clothing style from the ORIGINAL FIRST IMAGE and apply them to this new person.
+            - The new person must have the EXACT SAME facial expression (smile, shock, anger, etc.), lighting, and pose as the original subject.
+            - Ensure 100% photorealistic likeness to the reference face, but adapted to the original image's environment.`;
         }
         
         // --- STRICT SURGICAL IDENTITY TRANSFER PROTOCOL ---
-        const isComparison = prompt.toLowerCase().includes('vs') || prompt.toLowerCase().includes('versus') || prompt.includes('$');
+        const isComparison = /\bvs\.?\b|\bversus\b/i.test(prompt);
         const comparisonLayout = isComparison ? `
-        LAYOUT RULE: This is a COMPARISON. 
-        - LEFT SIDE: Show the weak/cheap/old item (e.g., $1 item). This side should be slightly blurry.
-        - RIGHT SIDE: Show the strong/expensive/new item (e.g., $100M item). Use luxury colors (emerald, purple, money-green).
-        - CENTER: Place the face and upper body of ${personaName} prominently in the center of the image. The body MUST be visible, not just the face. This person acts as the divider between the two halves.
-        - FACE: The person MUST be smiling. The tongue MUST NOT be visible.
-        - TEXT: Do NOT use "VS". Instead, write the name of the item on the left (e.g., "One Dollar") above it, and the value of the item on the right in words (e.g., "One Hundred Million Dollars") above it. PREFER LETTERS OVER NUMBERS for large values.
-        - NO DIVIDER: Do NOT include a white line or any artificial border between the sides.
+        LAYOUT RULE: This is a "Cheap vs Expensive" COMPARISON (MrBeast Style). 
+        - LEFT SIDE: Show the first item (the cheap/poor/broken item). The environment here can be stormy or cloudy, but it MUST be well-lit and clearly visible. Do NOT make it too dark or obscure the item.
+        - RIGHT SIDE: Show the second item (the expensive/luxurious/new item). The environment here MUST be beautiful, sunny, clear blue sky, and premium. Do NOT make the item solid gold unless explicitly requested.
+        - CENTER: Place a person prominently in the center of the image looking directly at the camera. Show ONLY the face and upper chest/shoulders. Do NOT show hands or arms. This person acts as the divider between the two halves.
+        - FACE: The person MUST be smiling or looking shocked.
+        - TEXT: Do NOT use the word "VS". You MUST write the price/value of the left item at the top left, and the price/value of the right item at the top right. 
+        - TEXT ABBREVIATION: You MUST abbreviate large numbers! For example, write "$100M" instead of "$100,000,000" or "100 Million". Write "$1B" instead of "$1,000,000,000". Write "$10K" instead of "$10,000". The text must be huge, bold, white with a thick black outline.
+        - NO DIVIDER: Do NOT include a white line or any artificial border between the sides. The person in the center is the divider.
         ` : "";
 
         const finalPrompt = `
         TASK: ULTRA-PRECISE SURGICAL FACE SWAP / IDENTITY TRANSFER.
-        TARGET IDENTITY: ${personaName}.
+        ${face ? "You are provided with TWO images. IMAGE 1 is the base thumbnail. IMAGE 2 is the reference face. You MUST replace the face of the primary subject in IMAGE 1 with the exact face from IMAGE 2." : "You MUST replace the face in the image with the exact identity requested in the prompt."}
+        
         ${comparisonLayout}
         
-        CRITICAL EXECUTION RULES (NO EXCEPTIONS):
-        1. **PRESERVE POSE & GAZE**: Preserve the exact head pose, face angle, and eye gaze direction from the original image. The swapped face MUST look in the exact same direction.
-        2. **PRESERVE ALL PHYSICAL DETAILS**: Preserve all facial details present in the original image including: scars, wounds, wrinkles, dirt, blood, scratches, sweat, water, and pore-level skin texture.
-        3. **IDENTICAL EXPRESSION**: The facial expression must remain identical to the original image: same mouth shape, same eyebrow position, same eye openness, and same emotional intensity.
-        4. **BODY-WIDE SKIN TONE SYNC**: Match the skin tone of the swapped face perfectly with the body, neck, ears, and hands. Skin color must be fully consistent across the entire body.
-        5. **LIGHTING TRANSFER**: Transfer the original lighting conditions to the swapped face: same light direction, same shadows, same highlights, same color temperature, and same contrast.
-        6. **PRESERVE ENVIRONMENTAL EFFECTS**: Preserve effects affecting the face such as smoke, fire light, water reflections, dust, and atmospheric lighting.
-        7. **ANATOMICAL PROPORTIONS**: Maintain correct anatomical proportions: same head size, same jaw width, same cheek structure, and same facial alignment with the neck.
-        8. **PRESERVE HAIR & EARS**: Preserve hairline, ears, and surrounding elements. Do NOT distort hair, beard, or ears during the swap.
+        CRITICAL EXECUTION RULES:
+        1. **PRESERVE POSE & GAZE**: Preserve the exact head pose, face angle, and eye gaze direction from the original image.
+        2. **PRESERVE ALL PHYSICAL DETAILS (CRITICAL)**: You MUST preserve all facial details present in the original image including scars, blood, dirt, sweat, and wrinkles. Apply them exactly to the new face in the exact same positions.
+        3. **EXPRESSION & MOUTH RULE**: The facial expression must match the original image's emotion. DO NOT open the mouth wide. The mouth should be closed or only slightly open.
+        4. **BODY-WIDE SKIN TONE SYNC**: Match the skin tone of the swapped face perfectly with the body of the original image.
+        5. **LIGHTING & SHADOW TRANSFER (CRITICAL)**: Transfer the exact original lighting conditions, shadows, and highlights to the swapped face. Focus on hyper-realistic quality like MrBeast thumbnails.
+        6. **PRESERVE ENVIRONMENTAL EFFECTS**: Preserve effects affecting the face such as smoke or water reflections.
+        7. **ANATOMICAL PROPORTIONS**: Maintain correct anatomical proportions.
+        8. **PRESERVE HAIR & EARS**: Preserve hairline, ears, and surrounding elements.
         9. **PERSPECTIVE FIDELITY**: Maintain camera perspective and lens distortion exactly as in the original image.
-        10. **SEAMLESS INTEGRATION**: Ensure no visible editing artifacts, no warped features, and no mismatched skin blending. The result must look like ${personaName} was originally photographed in that scene.
+        10. **SEAMLESS INTEGRATION**: Ensure no visible editing artifacts.
         11. **IDENTITY LOCK**: ${identityInstruction}
         12. **EYE LOGIC**: Eyes must be natural and clear. No yellow or orange eyes.
         13. **SINGLE FACE SWAP**: Only swap the face of the PRIMARY subject.
-        14. **ADDITIONAL COMMANDS**: ${prompt || "Focus on a clean and realistic face swap."}
+        14. **NO LETTERBOXING**: Do NOT add black bars. The image must fill the 16:9 canvas perfectly.
+        15. **EMOTION & ACTION**: The character's facial expression MUST strongly match the mood of the scene.
+        16. **REALISTIC FACES**: Faces MUST look like real human photographs.
+        17. **ADDITIONAL COMMANDS**: ${prompt || "Focus on a clean and realistic face swap."}
         
         OUTPUT: 16:9 aspect ratio. Photorealistic. Commercial quality. Masterpiece.
         `;
@@ -291,7 +356,7 @@ export const recreateThumbnail = async (base64Image: string, mimeType: string, p
         const response = await ai.models.generateContent({
             model: model,
             contents: { parts },
-            config: { imageConfig: { aspectRatio: '16:9', imageSize: imageSize as any } }
+            config: { imageConfig: { aspectRatio: '16:9' } }
         });
         
         const images: string[] = [];
@@ -309,7 +374,11 @@ export const recreateThumbnail = async (base64Image: string, mimeType: string, p
         }
         
         if (images.length === 0) {
+            const textResponse = response.candidates?.[0]?.content?.parts?.find(p => p.text)?.text;
             console.warn("Gemini returned no images. Response:", JSON.stringify(response));
+            if (textResponse) {
+                throw new Error(`Generation failed. Model returned text instead of image: ${textResponse}`);
+            }
         }
         
         return images;
@@ -317,104 +386,97 @@ export const recreateThumbnail = async (base64Image: string, mimeType: string, p
 };
 
 // ... (باقي الوظائف تبقى كما هي)
-const enhanceThumbnailPrompt = async (rawPrompt: string, personaName: string, styleRule: string, inspirationImages?: string[]): Promise<{ visualDescription: string; suggestedTitle: string }> => {
+const enhanceThumbnailPrompt = async (rawPrompt: string, inspirationImages?: string[]): Promise<{ visualDescription: string; suggestedTitle: string }> => {
     const ai = getClient();
     const model = 'gemini-3-flash-preview';
     
-    // 1. Check if we have inspiration images or need search
-    let searchContext = "";
-    const isGenericPersona = personaName.toLowerCase().includes("generic") || !personaName;
-    const isDefaultStyle = styleRule === DEFAULT_STYLE;
-
+    const parts: any[] = [];
+    
     if (inspirationImages && inspirationImages.length > 0) {
-        try {
-            const parts = inspirationImages.map(img => ({ inlineData: { data: img, mimeType: 'image/png' } }));
-            parts.push({ text: `Analyze these YouTube thumbnail inspiration images. 
-            Extract:
-            1. COLOR PALETTE: Dominant colors and accent colors.
-            2. COMPOSITION: Where are the characters? Where is the focal point?
-            3. CHARACTER EXPRESSIONS: What emotions are the people showing?
-            4. SYMBOLS & ELEMENTS: Are there maps, flags, weapons, or specific icons?
-            5. ATMOSPHERE: Is it dark, cinematic, bright, or news-like?
-            
-            Return a concise summary of the visual style to be used for a new thumbnail about: "${rawPrompt}".` } as any);
-
-            const analysisResponse = await ai.models.generateContent({
-                model: 'gemini-3-flash-preview',
-                contents: { parts }
-            });
-            searchContext = `VISUAL INSPIRATION ANALYSIS: ${analysisResponse.text}`;
-        } catch (e) {
-            console.error("Inspiration analysis failed", e);
-        }
-    } else if (isGenericPersona || isDefaultStyle) {
-        try {
-            const searchResponse = await ai.models.generateContent({
-                model: 'gemini-3-flash-preview',
-                contents: `Research the visual style, key subjects, and trending thumbnail elements for: "${rawPrompt}". 
-                If it's a specific YouTube niche, find what the top creators are doing. 
-                Identify key symbols, colors, and compositions that work for this topic.`,
-                config: {
-                    tools: [{ googleSearch: {} }]
-                }
-            });
-            searchContext = `YOUTUBE TRENDS & VISUAL CONTEXT: ${searchResponse.text}`;
-        } catch (e) {
-            console.error("Search failed", e);
-        }
+        inspirationImages.forEach(img => {
+            parts.push({ inlineData: { data: img, mimeType: 'image/png' } });
+        });
+        parts.push({ text: `Analyze these uploaded images. 
+        SCENARIO A (Object Extraction): If the user's prompt asks to extract a specific object, describe that exact object in extreme detail and IGNORE any person holding it.
+        SCENARIO B (Thumbnail Remaster/Upgrade): If the uploaded image is a basic, weak, or boring thumbnail (e.g., plain white background, simple text) and the user wants to improve it or recreate it, act as an expert YouTube Thumbnail Designer. Extract the core concept, text, and subject from the weak image, and UPGRADE the visual description to be highly cinematic, engaging, and high-CTR. Change boring backgrounds to dynamic, well-lit studio or thematic backgrounds (like dark cinematic rooms with neon accents). Add glowing effects to text or charts, rim lighting to subjects, and dramatic contrast. Make it look like a top-tier professional YouTube thumbnail.` });
+    } else {
+        parts.push({ text: `Research the visual style, key subjects, and trending thumbnail elements for this topic. Identify key symbols, colors, and compositions that work for this niche.` });
     }
 
-    const personaObj = PERSONA_LIST.find(p => p.name === personaName) || PERSONA_LIST.find(p => p.id === personaName);
-    let identityInstruction = `include ${personaName} in the scene naturally.`;
-    if (personaObj?.id === 'mrbeast') {
-        identityInstruction = `include the MrBeast YouTube channel logo (the blue tiger) prominently in the scene instead of his face.`;
-    } else if (['elon_musk', 'mark_zuckerberg', 'pewdiepie', 'messi', 'logan_paul', 'khabib'].includes(personaObj?.id || '')) {
-        identityInstruction = `CRITICAL: You MUST include the ACTUAL REAL FACE of ${personaName}. Ensure the likeness is 100% accurate to the real person.`;
-    }
+    parts.push({ text: `User's concept: "${rawPrompt}"\n\nCreate the visual description and suggested title.` });
 
     const systemPrompt = `You are a world-class YouTube thumbnail art director.
     The user has provided a concept for a thumbnail, possibly in Arabic or another language.
     Your task is to translate it to English and expand it into a highly detailed, visual description for an AI image generator.
     
-    User's concept: "${rawPrompt}"
-    Persona/Character to include: "${personaName}"
-    Style: "${styleRule}"
-    ${searchContext}
-    
     CRITICAL INSTRUCTIONS:
+    0. OBJECT EXTRACTION & REMASTERING: If the user uploaded an image, follow the SCENARIO instructions provided. If remastering, completely transform the weak image into a masterpiece while keeping the core message.
     1. Translate the concept to English.
-    2. Describe the SCENE visually. If it's a battle or struggle, describe the intense facial expressions (grit, clenched teeth, sweat) and the direction of the eyes (MUST look directly at the viewer).
-    3. For Political/News topics: Focus on the "essence" using wars, weapons, military equipment, and dramatic atmosphere. 
-    4. PERSONA RULE: ${identityInstruction}
-    5. CINEMATIC DETAILS: Add imaginative environmental details like ice crystals in hair for cold scenes, or stylized scratches with DEEP RED BLOOD-LIKE DROPS for battle scenes. Scars MUST be red. If in snow (e.g., Antarctica), add ice spots/crystals in the hair and eyebrows, and ensure the background is a vast, frozen wasteland with a survival tent if appropriate.
+    2. DETECT COMPARISONS (MrBeast Style): If the user's prompt implies a comparison between a cheap/bad item and an expensive/luxurious item (e.g., "$1 vs $100M house", "دولار ضد 100 مليون سيارة", "cheap vs expensive"), you MUST format the visual description to explicitly mention the two sides:
+       - LEFT SIDE: The cheap/bad item in a stormy or cloudy environment, but it MUST remain bright and clearly visible. Do NOT make it too dark or obscure the item.
+       - RIGHT SIDE: The expensive/luxurious item in a beautiful, sunny, premium environment. (NOTE: Do NOT make it solid gold unless requested. Just make it look highly luxurious, modern, and expensive).
+       - CENTER: A person (like MrBeast) looking directly at the camera, smiling or looking shocked, acting as the divider. Show ONLY the face and upper chest. Do NOT show hands or arms.
+       - TEXT: You MUST include the abbreviated prices/values at the top. For example, if the prompt says "$100,000,000", write "$100M". If it says "1 dollar", write "$1". Place the small amount text on the top left, and the large amount text on the top right.
+    3. Describe the SCENE visually. ADAPT TO THE STYLE: If it's a cooking style, describe food textures, steam, and warm lighting. If it's a travel style, describe the landscape, golden hour lighting, and the subject's awe. If it's a challenge/viral style, describe intense facial expressions (grit, clenched teeth, sweat) and the direction of the eyes (MUST look directly at the viewer).
+    4. For Political/News topics: Focus on the "essence" using wars, weapons, military equipment, and dramatic atmosphere. 
+    5. CINEMATIC DETAILS: Add imaginative environmental details that MATCH THE NICHE. For survival/challenge scenes, add ice crystals in hair for cold scenes, or stylized scratches with DEEP RED BLOOD-LIKE DROPS for battle scenes. For cooking, add flying flour or dripping sauce.
     6. NO MAPS: Avoid generating literal maps for news topics; use symbols or scenes instead.
-    7. TEXT DISTILLATION (THE HOOK): Extract only the most critical, high-impact keyword, number, or timeframe (e.g., "50 Hours", "$100k", "2 Days"). Keep it to 1-3 words maximum. You MUST integrate this text naturally into the environment (e.g., carved into a tree, written in the dirt, painted on a sign). Do NOT use floating 3D text or arrows. The visual elements MUST explain the rest of the context (e.g., if the text is "50 Hours", the background must show the "Antarctica" context via snow, a tent, and a suffering expression).
+    7. TEXT DISTILLATION (THE HOOK): If the user's concept explicitly contains a short, high-impact keyword, number, or timeframe (e.g., "50 Hours", "$100k", "2 Days"), you may extract it (1-3 words max) to integrate naturally into the environment. If the concept does NOT contain such specific hooks, DO NOT invent or add any text (like money amounts or random numbers). The visual elements MUST explain the context without relying on hallucinated text.
     8. PREFER LETTERS OVER NUMBERS: When generating the suggestedTitle, use words instead of digits for large numbers.
-    9. Set the appropriate mood and lighting (e.g., dark and dramatic for war, bright and colorful for entertainment).
-    10. THUMBNAIL BEST PRACTICES: 
-       - High contrast, dark background, bright foreground.
+    9. Set the appropriate mood and lighting based on the style (e.g., dark and dramatic for war, bright and colorful for entertainment, warm and inviting for food).
+    10. DEFAULT LAYOUT & COMPOSITION RULE (CRITICAL):
+       - FACE VISIBILITY: Show ONLY the face and shoulders/arms of the main subject. Do NOT show the full body. Do NOT add gaming headsets or helmets unless explicitly requested by the user.
+       - PLACEMENT LOGIC: 
+         * If the face is on the RIGHT side, the main object/action MUST be clearly visible on the LEFT side.
+         * If the face is on the LEFT side, the main object/action MUST be clearly visible on the RIGHT side.
+         * If the face is in the MIDDLE, the objects/actions MUST be visible on BOTH the left and right sides.
+       - GAZE: The subject should either look directly at the viewer OR look directly at the main object/action.
+       - CLARITY: The main object or action being reacted to MUST be extremely clear, large, and easy to understand.
+    11. GAME CHARACTER RULE (CRITICAL): If the user's prompt mentions a specific video game (e.g., "Minecraft", "Fortnite", "Free Fire", "Call of Duty", "GTA", "Roblox"), you MUST explicitly describe using authentic 3D characters/skins from that specific game for any secondary characters or crowds. Do NOT use generic men or women. For example, if the prompt says "4 players vs 100 players in Minecraft", describe "4 distinct Minecraft avatars (like Steve or Alex) in specific colors on one side, and a crowd of 100 uniform Minecraft characters on the other side". The main subject (the reactor face) should still be realistic (unless otherwise specified), but the in-game elements MUST use the game's specific art style and character models.
+    12. CROWDS & GROUPS RULE: If the prompt asks for a crowd, a group of people, or many people (e.g., "100 men", "50 pilots", "a large crowd"):
+       - The people MUST look 100% photorealistic and human (UNLESS the Game Character Rule applies). DO NOT make them look like 3D models, cartoons, or video game characters.
+       - They must have diverse, realistic human faces, skin textures, and clothing.
+    13. COMPETITION & RIVALRY RULE: If the prompt implies a competition, battle, or rivalry (e.g., "100 pilots competing", "men vs women", "fighting for a prize"):
+       - The people MUST NOT just stand next to each other passively.
+       - They MUST look like they are actively competing, struggling, or facing off.
+       - Give them intense, aggressive, or determined facial expressions (grit, clenched teeth, glaring).
+       - Show dynamic action: climbing over each other, pushing, running towards the goal, or staring each other down in a tense standoff.
+    14. CHANNEL STYLE ADAPTATION: If the user mentions a specific YouTube channel style (e.g., MrBeast, Ali Abdaal, Iman Gadzhi, Gaming channels), adapt the lighting, composition, and text style to match that channel's iconic look perfectly. For example, MrBeast = high saturation, shocked faces, clear comparisons. Iman Gadzhi = dark cinematic, glowing charts, money, serious expressions.
+    15. NICHE ADAPTATION: Adapt the visual style perfectly to the user's requested niche (e.g., Gaming, Animal Reactions, Science, Tech, Vlogs). Make it highly professional and tailored to that niche's visual language while maintaining high CTR principles.
+    16. TEXT COLOR & PLACEMENT: If text is included, specify that it MUST NOT be all one color. Use varied, high-contrast colors for emphasis (e.g., one important word GOLD or YELLOW, another word WHITE or RED). Specify that text MUST be fully visible and NOT cut off.
+    17. THUMBNAIL BEST PRACTICES: 
+       - EXACT LIKENESS RULE: If a specific celebrity or public figure is named (e.g., MrBeast, Elon Musk, Cristiano Ronaldo), you MUST generate their exact, real-life facial features. Do NOT generate a generic face. Ensure 100% accurate likeness.
+       - NO LETTERBOXING: Do NOT add black bars at the top or bottom of the image. The image must fill the entire 16:9 canvas perfectly. Do NOT add cinematic borders.
+       - EMOTION & ACTION: The character's facial expression MUST strongly match the mood of the scene (e.g., shocked, angry, excited, terrified). For standard thumbnails, the character MUST be doing something active with their hands. However, for COMPARISON thumbnails, keep the hands hidden and focus ONLY on the face and chest. Do NOT generate characters just standing still with neutral expressions.
+       - MOUTH RULE: The subject's mouth MUST NOT be unnaturally wide open. A closed or slightly open mouth performs better. Do NOT generate wide-open "soy face" expressions.
+       - High contrast, dark background, bright foreground (unless the style dictates otherwise, like minimalist).
        - Rule of Thirds composition.
-       - Soft, flat front lighting for the subject. NO dramatic side lighting or colored rim lights on the person.
+       - Soft, flat front lighting for the subject. NO dramatic side lighting or colored rim lights on the person (unless it's a tech/gaming style).
        - Sunlight and environmental glows MUST be background-only.
        - Catchlight in the eyes (if people are present).
        - Safe Zones: Keep main subjects away from edges.
-       - Selective color pop: One vibrant element (e.g., fire, money) against a more muted background.
+       - Selective color pop: One vibrant element against a more muted background.
        - CONCEPT OVER REALITY: Prioritize visual clarity and impact over strict realism. Use compositing to place subjects in impossible or extreme situations that tell a story instantly.
        - NO ARROWS OR CIRCLES: Do NOT use red arrows, yellow arrows, or red circles. The viewer should understand the focal point through composition and character eye-lines alone.
-       - DETAILED, CLEAR BACKGROUNDS: Do NOT use blurry or out-of-focus backgrounds. The background must be highly detailed and contribute logically to the story (e.g., if in a forest, show specific threats like a bear or a person with a knife).
-       - ENVIRONMENTAL TEXT INTEGRATION: If the prompt includes important numbers or short text (e.g., "30 Days", "100 Hours"), integrate it naturally into the environment. Carve it into a tree, write it in the dirt/sand, or place it prominently at the top of the image. Do NOT just float text with an arrow.
-       - MINUTE DETAILS & STORYTELLING: Focus heavily on small, logical details that tell the story. Every element in the background and foreground must make sense for the narrative (e.g., if surviving 30 days, show dirt, ripped clothes, and a specific threat).
+       - DETAILED, CLEAR BACKGROUNDS: Do NOT use blurry or out-of-focus backgrounds. The background must be highly detailed and contribute logically to the story.
+       - ENVIRONMENTAL TEXT INTEGRATION: If the prompt includes important numbers or short text, integrate it naturally into the environment. Do NOT just float text with an arrow.
+       - MINUTE DETAILS & STORYTELLING: Focus heavily on small, logical details that tell the story. Every element in the background and foreground must make sense for the narrative.
        - AVENGERS COMPOSITION: For group shots, use symmetrical arrangements with a central, dominant subject. Use flat, high-key lighting to ensure every face is perfectly clear.
-       - EXTREME SCALE CONTRAST: Place small human subjects next to massive objects (Pyramids, giant rocks, piles of money) to create a sense of awe and impossibility.
-       - THE CONFLICT SPLIT: Use a sharp vertical divider to show two opposing forces or a "Vs" scenario (e.g., Messi vs Ronaldo). Ensure high contrast between the two sides.
-       - THE HIDDEN SUBJECT REVEAL: Place a character partially obscured or hiding (e.g., under a desk or behind a door) to create an immediate curiosity gap.
-       - SYMBOLIC FOCAL POINT: Have the primary subject hold a single, high-value object (Key, Briefcase, Golden Ticket) directly towards the camera, slightly out of focus to create depth.
+       - EXTREME SCALE CONTRAST: Place small human subjects next to massive objects to create a sense of awe and impossibility.
+       - THE CONFLICT SPLIT: Use a sharp vertical divider to show two opposing forces or a "Vs" scenario. Ensure high contrast between the two sides.
+       - THE HIDDEN SUBJECT REVEAL: Place a character partially obscured or hiding to create an immediate curiosity gap.
+       - SYMBOLIC FOCAL POINT: Have the primary subject hold a single, high-value object directly towards the camera, slightly out of focus to create depth.
        - MASSIVE CROWD DENSITY: Use hundreds of people in a symmetrical, dense arrangement to demonstrate the scale of a challenge or event.
-    11. ULTRA-PRECISE FACE SWAP: When swapping faces, preserve the exact head pose, face angle, eye gaze, and all physical details (scars, wounds, wrinkles, dirt, blood, sweat, skin texture) from the original image. The expression must remain identical.
-    12. HYPER-REALISM: Ensure the prompt describes pore-level skin detail and 8K cinematic textures. This is Masterpiece quality.
-    13. EYE LOGIC: Eyes must be natural, clear, and expressive. No yellow or orange eyes.
+    10. ULTRA-PRECISE FACE SWAP: When swapping faces, preserve the exact head pose, face angle, eye gaze, and all physical details from the original image. The expression must remain identical.
+    11. EYE LOGIC: Eyes must be natural, clear, and expressive. No yellow or orange eyes.
+    12. BRAND ICONS & UI ELEMENTS: If the prompt mentions specific apps (ChatGPT, Claude, Google, Photoshop, Premiere, Stripe, Instagram, etc.), file types (PDF), or UI elements (notifications, chat bubbles, money alerts):
+        - Describe them as distinct, recognizable graphic elements (e.g., 'the official ChatGPT logo icon', 'a red PDF document icon', 'a glowing smartphone notification bubble').
+        - Integrate them dynamically: Describe them as floating in mid-air at a slight dynamic angle, glowing with rim lighting, or displayed clearly on a screen.
+        - Do NOT just write the word; explicitly describe the visual icon/logo and its physical presence in the scene.
     13. LOGICAL CONTEXT: Use logic to ensure the background matches the title. If the title says "Antarctica", the background MUST be Antarctica.
     14. SINGLE FACE SWAP: Only swap the face of the PRIMARY subject. Do NOT swap faces of background people or multiple people unless explicitly requested.
+    15. REALISTIC FACES: Faces MUST look like real human photographs, not 3D renders, cartoons, or AI-generated plastic faces. Skin texture should be highly realistic with natural pores and imperfections.
+    16. DO NOT add "hyper realistic", "photorealistic", "8k", or any specific style keywords like that. The platform already knows the strong style and applies it automatically.
     
     Return the result as a JSON object with two fields:
     - "visualDescription": The detailed English visual description.
@@ -425,10 +487,12 @@ const enhanceThumbnailPrompt = async (rawPrompt: string, personaName: string, st
     try {
         const response = await ai.models.generateContent({
             model: model,
-            contents: systemPrompt,
+            contents: { parts },
             config: { 
+                systemInstruction: systemPrompt,
                 responseMimeType: 'application/json',
                 maxOutputTokens: 4096,
+                tools: (!inspirationImages || inspirationImages.length === 0) ? [{ googleSearch: {} }] : undefined,
                 responseSchema: {
                     type: Type.OBJECT,
                     properties: {
@@ -450,124 +514,166 @@ const enhanceThumbnailPrompt = async (rawPrompt: string, personaName: string, st
     }
 };
 
-export const generateThumbnail = async (prompt: string, persona?: string, style?: string, baseImage?: string, mimeType?: string, useInspiration?: boolean, inspirationImages?: string[]): Promise<{ images: string[]; suggestedTitle: string }> => {
+export const generateThumbnail = async (prompt: string, baseImage?: string, mimeType?: string, useInspiration?: boolean, inspirationImages?: string[], faceBase64?: string | string[], count: number = 1): Promise<{ images: string[]; suggestedTitle: string }> => {
     return wrapGeminiCall(async () => {
-        const ai = getClient();
         const model = 'gemini-2.5-flash-image';
-        const imageSize = '1K';
+        const ai = getClient();
         
-        const personaObj = PERSONA_LIST.find(p => p.id === persona);
-        let personaName = personaObj ? personaObj.name : "A generic energetic person";
-        let identityInstruction = `include ${personaName} in the scene naturally.`;
+        const { visualDescription, suggestedTitle } = await enhanceThumbnailPrompt(prompt, inspirationImages);
 
-        if (persona === 'mrbeast') {
-            personaName = "MrBeast YouTube channel logo (the blue tiger)";
-            identityInstruction = `include the MrBeast YouTube channel logo (the blue tiger) prominently in the scene instead of his face.`;
-        } else if (['elon_musk', 'mark_zuckerberg', 'pewdiepie', 'messi', 'logan_paul', 'khabib'].includes(persona || '')) {
-            identityInstruction = `CRITICAL: You MUST include the ACTUAL REAL FACE of ${personaName}. Ensure the likeness is 100% accurate to the real person.`;
-        }
-
-        const styleRule = (style && CHANNEL_STYLE_RULES[style]) ? CHANNEL_STYLE_RULES[style] : DEFAULT_STYLE;
-        
-        const isComparison = prompt.toLowerCase().includes('vs') || prompt.toLowerCase().includes('versus') || prompt.includes('$');
+        const isComparison = visualDescription.includes('LEFT SIDE:') && visualDescription.includes('RIGHT SIDE:');
         const comparisonLayout = isComparison ? `
-        LAYOUT RULE: This is a COMPARISON. 
-        - LEFT SIDE: Show the weak/cheap/old item (e.g., $1 item). This side should be slightly blurry.
-        - RIGHT SIDE: Show the strong/expensive/new item (e.g., $100M item). Use luxury colors (emerald, purple, money-green).
-        - CENTER: Place the face and upper body of ${personaName} prominently in the center of the image. The body MUST be visible, not just the face. This person acts as the divider between the two halves.
-        - FACE: The person MUST be smiling. The tongue MUST NOT be visible.
-        - TEXT: Do NOT use "VS". Instead, write the name of the item on the left (e.g., "One Dollar") above it, and the value of the item on the right in words (e.g., "One Hundred Million Dollars") above it. PREFER LETTERS OVER NUMBERS for large values.
-        - NO DIVIDER: Do NOT include a white line or any artificial border between the sides.
+        LAYOUT RULE: This is a "Cheap vs Expensive" COMPARISON (MrBeast Style). 
+        - LEFT SIDE: Show the first item (the cheap/poor/broken item). The environment here can be stormy or cloudy, but it MUST be well-lit and clearly visible. Do NOT make it too dark or obscure the item.
+        - RIGHT SIDE: Show the second item (the expensive/luxurious/new item). The environment here MUST be beautiful, sunny, clear blue sky, and premium. Do NOT make the item solid gold unless explicitly requested; just make it look highly luxurious, modern, and expensive using premium materials (sleek metal, glass, high-end design).
+        - CENTER: Place a person prominently in the center of the image looking directly at the camera. Show ONLY the face and upper chest/shoulders. Do NOT show hands or arms. This person acts as the divider between the two halves.
+        - FACE: The person MUST be smiling or looking shocked.
+        - TEXT: Do NOT use the word "VS". You MUST write the price/value of the left item at the top left, and the price/value of the right item at the top right. 
+        - TEXT ABBREVIATION: You MUST abbreviate large numbers! For example, write "$100M" instead of "$100,000,000" or "100 Million". Write "$1B" instead of "$1,000,000,000". Write "$10K" instead of "$10,000". The text must be huge, bold, white with a thick black outline.
+        - NO DIVIDER: Do NOT include a white line or any artificial border between the sides. The person in the center is the divider.
         ` : "";
 
-        const { visualDescription, suggestedTitle } = await enhanceThumbnailPrompt(prompt, personaName, styleRule, inspirationImages);
-
         const finalPrompt = `
-        [STYLE: ${styleRule}] 
+        [STYLE: MrBeast] 
         ${comparisonLayout}
         
         VISUAL SCENE: ${visualDescription}
         
         QUALITY REQUIREMENTS:
+        - DEFAULT LAYOUT & COMPOSITION RULE (CRITICAL):
+          * FACE VISIBILITY: Show ONLY the face and shoulders/arms of the main subject. Do NOT show the full body. Do NOT add gaming headsets or helmets unless explicitly requested.
+          * PLACEMENT LOGIC: If the face is on the RIGHT, the main object/action MUST be on the LEFT. If the face is on the LEFT, the main object/action MUST be on the RIGHT. If the face is in the MIDDLE, objects/actions MUST be on BOTH sides.
+          * GAZE: The subject should either look directly at the viewer OR look directly at the main object/action.
+          * CLARITY: The main object or action being reacted to MUST be extremely clear, large, and easy to understand.
+        - CROWDS, GROUPS & COMPETITIONS RULE (CRITICAL): 
+          * If the prompt involves groups competing (e.g., "50 Men vs 50 Women", "100 Streamers"), place one group clearly on the left side and the other on the right side.
+          * If it's a united group or team, they MUST wear uniform clothing of a single color (e.g., all wearing blue tracksuits or red uniforms).
+          * Do NOT focus solely on the main character's face. The competitors/crowd MUST be highly visible, detailed, and show intense emotions (struggling, fighting, determined).
+          * The prize (e.g., airplane, Lamborghini, yacht, island, money) must be massive and prominent in the background.
+          * Always leave some space at the top of the image to show a bit of the sky.
+        - HYPER-REALISM RULE: The image MUST be hyper-realistic, 8k resolution, highly detailed photography. Do NOT make it look like a painting or cartoon unless requested. Skin textures, lighting, and environments must look like a real high-budget YouTube production.
+        - NICHE ADAPTATION: Adapt the visual style perfectly to the user's requested niche (e.g., Gaming, Animal Reactions, Science, Tech, Vlogs). Make it highly professional and tailored to that niche's visual language while maintaining high CTR principles.
+        - CRITICAL TEXT RULES: NEVER cut off text. All text must be fully visible within the frame. DO NOT make all text the same color. Use varied, high-contrast colors for emphasis (e.g., make one important word GOLD or YELLOW, and another word WHITE or RED). Text must be huge, bold, and have a thick black outline or drop shadow for readability.
+        - EXACT LIKENESS RULE: If a specific celebrity is named, generate their exact real-life facial features.
+        - NO LETTERBOXING: Do NOT add black bars. The image must fill the 16:9 canvas.
+        - EMOTION & ACTION: The character's facial expression MUST strongly match the mood.
+        - MOUTH RULE: The subject's mouth MUST NOT be unnaturally wide open. A closed or slightly open mouth performs better.
+        - REALISTIC FACES: Faces MUST look like real human photographs.
         - 16:9 Aspect Ratio (1280x720).
-        - Ultra Hyper-realistic, photorealistic, 8k resolution.
         - Cinematic lighting, professional photography, high detail.
-        - Extreme texture detail, pore-level skin realism.
         - High dynamic range (HDR), vibrant but realistic colors.
-        - Composition: Rule of Thirds, Center-weighted for mobile.
-        - Lighting: Soft, flat front lighting for the subject. NO side lighting, NO colored rim lights, and NO sunlight effects on the subject's face or body. Sunlight effects MUST be background-only.
-        - Post-Processing: Dodge & Burn effects (background only), high clarity, selective color pop.
-        - CONCEPT OVER REALITY: Prioritize visual clarity and impact over strict realism. Use compositing to place subjects in impossible or extreme situations that tell a story instantly.
-        - NO ARROWS OR CIRCLES: Do NOT use red arrows, yellow arrows, or red circles. The viewer should understand the focal point through composition and character eye-lines alone.
-        - DETAILED, CLEAR BACKGROUNDS: Do NOT use blurry or out-of-focus backgrounds. The background must be highly detailed and contribute logically to the story (e.g., if in a forest, show specific threats like a bear or a person with a knife).
-        - ENVIRONMENTAL TEXT INTEGRATION: If the prompt includes important numbers or short text (e.g., "30 Days", "100 Hours"), integrate it naturally into the environment. Carve it into a tree, write it in the dirt/sand, or place it prominently at the top of the image. Do NOT just float text with an arrow.
-        - MINUTE DETAILS & STORYTELLING: Focus heavily on small, logical details that tell the story. Every element in the background and foreground must make sense for the narrative (e.g., if surviving 30 days, show dirt, ripped clothes, and a specific threat).
-        - AVENGERS COMPOSITION: For group shots, use symmetrical arrangements with a central, dominant subject. Use flat, high-key lighting to ensure every face is perfectly clear.
-        - EXTREME SCALE CONTRAST: Place small human subjects next to massive objects (Pyramids, giant rocks, piles of money) to create a sense of awe and impossibility.
-        - THE CONFLICT SPLIT: Use a sharp vertical divider to show two opposing forces or a "Vs" scenario (e.g., Messi vs Ronaldo). Ensure high contrast between the two sides.
-        - THE HIDDEN SUBJECT REVEAL: Place a character partially obscured or hiding (e.g., under a desk or behind a door) to create an immediate curiosity gap.
-        - SYMBOLIC FOCAL POINT: Have the primary subject hold a single, high-value object (Key, Briefcase, Golden Ticket) directly towards the camera, slightly out of focus to create depth.
-        - MASSIVE CROWD DENSITY: Use hundreds of people in a symmetrical, dense arrangement to demonstrate the scale of a challenge or event.
-        - TEXT OVERLAY: Do NOT use floating 3D text. All text must be integrated into the environment (carved, written in dirt, painted on a wall, etc.).
+        - Lighting: Soft, flat front lighting for the subject. NO side lighting on the face.
+        - NO ARROWS OR CIRCLES: Do NOT use red arrows or red circles.
+        - ENVIRONMENTAL TEXT INTEGRATION: If the prompt includes text, integrate it naturally into the environment. Do NOT just float text.
         `;
-        const parts: any[] = [{ text: finalPrompt }];
-        if (baseImage) {
-            const { data, mime } = await prepareImageForAPI(baseImage, mimeType || 'image/png');
-            parts.unshift({ inlineData: { data, mimeType: mime } });
-        }
-        const response = await ai.models.generateContent({
-            model: model,
-            contents: { parts },
-            config: { imageConfig: { aspectRatio: '16:9' } } 
-        });
-        const images: string[] = [];
+        const parts: any[] = [];
         
-        if (response.candidates?.[0]?.finishReason === 'SAFETY') {
-            throw new Error("Generation blocked by safety filters. Try a different prompt or persona.");
+        if (faceBase64) {
+            const faces = Array.isArray(faceBase64) ? faceBase64 : [faceBase64];
+            for (const face of faces) {
+                const { data, mime } = await prepareImageForAPI(face, 'image/png');
+                parts.push({ inlineData: { data, mimeType: mime } });
+            }
+            parts.push({ text: "CRITICAL IDENTITY & COMPOSITION INSTRUCTION:\n1. You MUST use the exact face(s) provided in the reference images above for the MAIN CHARACTER in the generated image. Maintain their exact real-life identity and facial features.\n2. FOREGROUND PLACEMENT: This main character MUST be placed prominently in the FOREGROUND (usually on the left or right side), taking up a significant portion of the frame, exactly like MrBeast does in his thumbnails.\n3. REACTION: The character must be reacting to the scene behind them (e.g., looking shocked, excited, or intense) or looking directly at the camera to engage the viewer." });
         }
 
-        if(response.candidates?.[0]?.content?.parts) {
-            for (const part of response.candidates[0].content.parts) { 
-                if (part.inlineData && part.inlineData.data) {
-                    const resized = await resizeImageTo1280x720(part.inlineData.data, part.inlineData.mimeType || 'image/jpeg');
-                    images.push(resized);
-                }
-            }
+        if (baseImage) {
+            const { data, mime } = await prepareImageForAPI(baseImage, mimeType || 'image/png');
+            parts.push({ inlineData: { data, mimeType: mime } });
         }
         
-        if (images.length === 0) {
+        parts.push({ text: finalPrompt });
+
+        const generateSingle = async () => {
+            const response = await ai.models.generateContent({
+                model: model,
+                contents: { parts },
+                config: { imageConfig: { aspectRatio: '16:9' } } 
+            });
+            
+            if (response.candidates?.[0]?.finishReason === 'SAFETY') {
+                throw new Error("Generation blocked by safety filters. Try a different prompt or persona.");
+            }
+
+            if(response.candidates?.[0]?.content?.parts) {
+                for (const part of response.candidates[0].content.parts) { 
+                    if (part.inlineData && part.inlineData.data) {
+                        return await resizeImageTo1280x720(part.inlineData.data, part.inlineData.mimeType || 'image/jpeg');
+                    }
+                }
+            }
+            
+            const textResponse = response.candidates?.[0]?.content?.parts?.find(p => p.text)?.text;
             console.warn("Gemini returned no images. Response:", JSON.stringify(response));
+            if (textResponse) {
+                throw new Error(`Generation failed. Model returned text instead of image: ${textResponse}`);
+            } else {
+                throw new Error("Generation failed. No image or text returned.");
+            }
+        };
+
+        const images: string[] = [];
+        for (let i = 0; i < count; i++) {
+            try {
+                const img = await generateSingle();
+                images.push(img);
+            } catch (err) {
+                console.error(`Failed to generate image ${i + 1}/${count}:`, err);
+                // If it's the first image and it fails, throw the error
+                if (i === 0) throw err;
+                // Otherwise, just continue and return whatever we have so far
+            }
+        }
+
+        if (images.length === 0) {
+            throw new Error("Generation failed to produce any images.");
         }
 
         return { images, suggestedTitle };
     });
 };
 
-export const getPredictionScore = (qualityScore: number): { score: string; label: string; color: string; confidence: string } => {
+export const getPredictionScore = (qualityScore: number): { score: string; label: string; color: string; borderColor: string; shadowColor: string; confidence: string } => {
     let score = Math.min(100, Math.max(0, qualityScore));
     let label = "";
     let color = "";
+    let borderColor = "";
+    let shadowColor = "";
     let confidence = "Medium";
     
     if (score >= 90) {
         label = "VIRAL POTENTIAL";
-        color = "text-purple-400";
+        color = "text-emerald-400";
+        borderColor = "border-emerald-500/50";
+        shadowColor = "shadow-[0_0_40px_rgba(16,185,129,0.2)]";
         confidence = "High";
     } else if (score >= 75) {
         label = "EXCELLENT";
         color = "text-green-400";
+        borderColor = "border-green-500/50";
+        shadowColor = "shadow-[0_0_40px_rgba(34,197,94,0.2)]";
         confidence = "Medium";
     } else if (score >= 50) {
         label = "NEEDS IMPROVEMENT";
         color = "text-yellow-400";
+        borderColor = "border-yellow-500/50";
+        shadowColor = "shadow-[0_0_40px_rgba(234,179,8,0.2)]";
+        confidence = "Low";
+    } else if (score >= 25) {
+        label = "POOR";
+        color = "text-orange-400";
+        borderColor = "border-orange-500/50";
+        shadowColor = "shadow-[0_0_40px_rgba(249,115,22,0.2)]";
         confidence = "Low";
     } else {
-        label = "POOR";
-        color = "text-red-400";
+        label = "TERRIBLE";
+        color = "text-red-500";
+        borderColor = "border-red-500/50";
+        shadowColor = "shadow-[0_0_40px_rgba(239,68,68,0.2)]";
         confidence = "Low";
     }
 
-    return { score: score.toFixed(0) + "%", label, color, confidence };
+    return { score: score.toFixed(0) + "%", label, color, borderColor, shadowColor, confidence };
 };
 
 export const generateViralTitles = async (topic: string, lang: string = 'English'): Promise<{title: string, score: number}[]> => {
@@ -602,26 +708,17 @@ export const generateMasterTitles = async (description: string, lang: string = '
         const model = 'gemini-3-flash-preview';
         
         const systemInstruction = `
-        ROLE: World-Class YouTube Title Engineer (MasterPeace Strategy).
-        MISSION: Transform a video description or raw title into 5 viral, high-CTR titles.
+        ROLE: World-Class YouTube Title Engineer (MrBeast Strategy).
+        MISSION: The user will provide a long, detailed description of their entire video. Your job is to extract the most powerful, high-stakes core concept and generate EXACTLY 3 viral titles.
         
-        STRATEGIC ARCHITECTURE (Based on MrBeast's "Inverted Production Model"):
-        1. **GRADE 0 COMPREHENSION**: Use the simplest words possible. A child should understand it instantly. Monosyllabic words are preferred.
-        2. **ACTIVE VOICE & I-STATEMENT**: Use "Active Voice" (e.g., "I Built...") and put the creator as the "Active Protagonist" (e.g., "I Spent 50 Hours...").
-        3. **CURIOSITY GAP**: Create a cognitive tension that can only be resolved by clicking.
-        4. **COSTLY SIGNALING**: Imply high stakes, massive effort, or extreme cost (e.g., "$1 vs $1,000,000").
-        5. **SCALE SHOCK**: Use extreme numbers or "Extreme Digits" to shock the viewer.
-        6. **CONCISE & CLEAR**: Keep titles under 60 characters to ensure they aren't cut off on mobile devices.
-        7. **EMOTIONAL CONTRAST**: Contrast extreme emotions or situations (e.g., "Poor vs Rich", "Safe vs Dangerous").
-        8. **INSTANT FULFILLMENT**: The title must be a "Promise" that the first 60 seconds of the video fulfills immediately.
+        STRATEGIC ARCHITECTURE:
+        1. **EXTRACT THE CORE**: Ignore the boring details. Find the most extreme, expensive, dangerous, or emotionally charged element in the description.
+        2. **KEEP IT MYSTERIOUS**: Do not tell the whole story in the title. Leave a "Curiosity Gap" that forces the viewer to click to find out what happens.
+        3. **MRBEAST STYLE**: Use simple words (Grade 0 comprehension). Use Active Voice ("I Spent...", "I Survived..."). Use extreme numbers or stakes.
+        4. **EXACTLY 3 VARIATIONS**: You MUST output exactly 3 titles. These 3 titles should NOT be completely different concepts. They should be 3 slightly different variations of the SAME winning concept (e.g., changing a specific number, swapping an adjective, or slightly altering the framing).
+        5. **CONCISE**: Keep titles under 50-60 characters.
         
-        PATTERNS TO USE:
-        - ($) Money Hook: "I Gave Away $1,000,000"
-        - (X vs Y) Extreme Contrast: "$1 vs $1,000,000,000 Yacht!"
-        - (Time/Endurance) Survival: "I Spent 50 Hours Buried Alive"
-        - (Quantity/Novelty) Spectacle: "I Put 100 Million Orbeez In My Friend's Backyard"
-        
-        OUTPUT: Return a JSON array of 5 objects, each with "title" (the viral title) and "score" (predicted CTR percentage, 85-99).
+        OUTPUT: Return a JSON array of exactly 3 objects, each with "title" (the viral title) and "score" (predicted CTR percentage, 85-99).
         LANGUAGE: Generate titles in ${lang}.
         `;
 
@@ -655,22 +752,24 @@ export const enhanceAndCompletePrompt = async (description: string, lang: string
         const model = 'gemini-3-flash-preview';
         
         const systemInstruction = `
-        ROLE: World-Class YouTube Thumbnail Art Director & Prompt Engineer.
-        MISSION: Take a raw video description and transform it into a high-quality, detailed visual prompt for an AI image generator.
+        ROLE: Expert Prompt Engineer for Image Generation.
+        MISSION: Take a raw video description and transform it into a highly effective visual prompt for an AI image generator.
         
         STRATEGY:
-        1. **ENHANCE PERSONALITY**: Infuse the prompt with intense character emotions (grit, shock, determination).
-        2. **ENHANCE STYLE**: Apply a viral, high-contrast visual style (cinematic lighting, 8K textures, Rule of Thirds).
-        3. **COMPLETE THE PROMPT**: Add specific environmental details, lighting instructions, and composition rules.
-        4. **TRANSLATION**: If the input is in ${lang}, translate the core concepts to English for the final prompt.
+        1. Analyze the user's prompt and determine what is written and in what language.
+        2. **STRICT LANGUAGE PRESERVATION**: DO NOT translate the prompt to English. You MUST write the optimized prompt in the EXACT SAME LANGUAGE as the user's input (e.g., if it's in Arabic, the output MUST be in Arabic; if it's in French, the output MUST be in French).
+        3. Add necessary details (lighting, composition, subject focus) to make the description better and easier for the platform to understand, while staying in the ORIGINAL LANGUAGE.
+        4. Remove unnecessary details or conversational filler.
+        5. DO NOT add "hyper realistic", "photorealistic", "8k", or any specific style keywords like that. The platform already knows the strong Mr. Beast style and applies it automatically.
+        6. Focus purely on the subject, action, environment, and composition.
         
         RULES:
-        - TEXT DISTILLATION: Extract a 1-3 word hook (e.g., "50 Hours", "$100k") from the description to place in the image. The visuals must explain the rest of the context.
-        - Hyper-realistic, photorealistic, 8K resolution.
-        - Focus on visual storytelling and "Curiosity Gap".
+        - MOUTH RULE: The subject's mouth MUST NOT be unnaturally wide open. A closed or slightly open mouth performs better.
+        - TEXT DISTILLATION: If the description explicitly contains a short, high-impact keyword, number, or timeframe (e.g., "50 Hours", "$100k"), you may extract it (1-3 words max) to place in the image. If it does NOT contain such specific hooks, DO NOT invent or add any text.
+        - BRAND ICONS & UI ELEMENTS: If the prompt mentions specific apps or UI elements, describe them as distinct, recognizable graphic elements floating or displayed clearly.
         - Max 60 words.
         
-        OUTPUT: Return ONLY the enhanced English prompt.
+        OUTPUT: Return ONLY the optimized prompt in the SAME LANGUAGE as the input.
         `;
 
         const response = await ai.models.generateContent({
@@ -685,7 +784,41 @@ export const enhanceAndCompletePrompt = async (description: string, lang: string
     });
 };
 
+const hashString = (str: string) => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return hash.toString(36);
+};
+
 const analysisCache = new Map<string, AnalysisResult>();
+
+const getCachedAnalysis = (key: string): AnalysisResult | null => {
+    if (analysisCache.has(key)) return analysisCache.get(key)!;
+    try {
+        const stored = localStorage.getItem(`analysis_${key}`);
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            analysisCache.set(key, parsed);
+            return parsed;
+        }
+    } catch (e) {
+        console.warn("Failed to read analysis from localStorage", e);
+    }
+    return null;
+};
+
+const setCachedAnalysis = (key: string, result: AnalysisResult) => {
+    analysisCache.set(key, result);
+    try {
+        localStorage.setItem(`analysis_${key}`, JSON.stringify(result));
+    } catch (e) {
+        console.warn("Failed to save analysis to localStorage", e);
+    }
+};
 
 export const describeImage = async (base64: string, mime: string, lang: string): Promise<string> => {
     return wrapGeminiCall(async () => {
@@ -697,11 +830,16 @@ export const describeImage = async (base64: string, mime: string, lang: string):
             contents: { 
                 parts: [
                     { inlineData: { data, mimeType: cleanMime } }, 
-                    { text: `Describe this YouTube thumbnail in extreme detail in ${lang}. Describe the lighting, colors, characters, facial expressions, background, text, and overall mood. Be as descriptive as possible.` }
+                    { text: `Provide a highly comprehensive and extremely detailed visual description of this image in ${lang}. 
+                    Do not omit any details. Describe:
+                    1. The exact identity of any recognizable characters or people (if known).
+                    2. Every detail of what they are wearing (clothing, accessories, colors).
+                    3. Their exact poses, facial expressions, and where they are looking.
+                    4. The lighting in extreme detail (direction, shadows, highlights, colors, intensity).
+                    5. The complete color palette, contrast, and mood.
+                    6. Every object, text, and element in the background and foreground.
+                    Do not analyze or judge, just describe everything visually present with maximum detail.` }
                 ] 
-            },
-            config: { 
-                maxOutputTokens: 1024
             }
         });
         
@@ -709,7 +847,82 @@ export const describeImage = async (base64: string, mime: string, lang: string):
     });
 };
 
-export const analyzeImage = async (base64: string, mime: string, mode: string, lang: string): Promise<AnalysisResult> => {
+export const generateImageDescription = async (base64Image: string, mimeType: string): Promise<string> => {
+    return wrapGeminiCall(async () => {
+        const ai = getClient();
+        const { data, mime } = await prepareImageForAPI(base64Image, mimeType);
+
+        const prompt = `
+        Provide a highly detailed, objective visual description of this image.
+        Focus ONLY on what is visually present. Do not analyze CTR, do not give advice, do not judge the quality.
+        Describe:
+        1. The main subject(s) and their poses/expressions.
+        2. The lighting (direction, color, intensity).
+        3. The color palette and contrast.
+        4. The background and environment.
+        5. Any text, graphics, or overlays present.
+        6. The overall composition and layout.
+        
+        Write it as a cohesive, detailed paragraph or two.
+        `;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: {
+                parts: [
+                    { inlineData: { data, mimeType: mime } },
+                    { text: prompt }
+                ]
+            }
+        });
+
+        return response.text || "Could not generate description.";
+    });
+};
+
+export const analyzeStyleFromImages = async (base64Images: string[]): Promise<string> => {
+    return wrapGeminiCall(async () => {
+        const ai = getClient();
+        const model = 'gemini-3-flash-preview';
+        
+        const parts: any[] = [
+            { text: `ROLE: Expert YouTube Thumbnail Designer & Art Director.
+TASK: Analyze these thumbnails from a specific YouTube channel and extract their exact visual style, composition rules, color grading, and lighting techniques.
+
+OUTPUT: Write a highly detailed "Style Prompt" (1-2 paragraphs) that can be appended to any image generation prompt to perfectly replicate this channel's aesthetic.
+
+Focus on:
+1. Lighting (e.g., bright flat lighting, cinematic rim lights, dark moody)
+2. Colors (e.g., high saturation, specific dominant colors, neon accents)
+3. Composition (e.g., extreme close-ups, wide shots, rule of thirds)
+4. Texture/Realism (e.g., hyper-realistic, glossy, grainy, cartoonish)
+5. Facial Expressions (e.g., exaggerated shock, serious, smiling)
+
+DO NOT describe the specific subjects in the images (e.g., do not say "a man in a red shirt"). Describe the STYLE that applies to ALL of them.
+Return ONLY the style prompt text.` }
+        ];
+
+        for (const base64 of base64Images) {
+            const cleanBase64 = base64.replace(/^data:image\/\w+;base64,/, '');
+            parts.push({
+                inlineData: {
+                    data: cleanBase64,
+                    mimeType: 'image/jpeg' // Assuming jpeg/png
+                }
+            });
+        }
+
+        const response = await ai.models.generateContent({
+            model,
+            contents: parts,
+            config: { maxOutputTokens: 1024 }
+        });
+
+        return response.text || "High contrast, vibrant colors, cinematic lighting, hyper-realistic.";
+    });
+};
+
+export const analyzeImage = async (base64: string, mime: string, mode: string, lang: string, title?: string): Promise<AnalysisResult> => {
     if (mode === 'DESCRIPTION') {
         const description = await describeImage(base64, mime, lang);
         return {
@@ -721,11 +934,12 @@ export const analyzeImage = async (base64: string, mime: string, mode: string, l
         };
     }
 
-    // Simple cache key based on image data and mode/lang
-    const cacheKey = `${base64.substring(0, 1000)}_${base64.length}_${mode}_${lang}`;
-    if (analysisCache.has(cacheKey)) {
+    // Simple cache key based on image data and mode/lang/title
+    const cacheKey = hashString(`${base64.substring(0, 500)}_${base64.length}_${mode}_${lang}_${title || ''}`);
+    const cached = getCachedAnalysis(cacheKey);
+    if (cached) {
         console.log("Returning cached analysis result");
-        return analysisCache.get(cacheKey)!;
+        return cached;
     }
 
     return wrapGeminiCall(async () => {
@@ -733,111 +947,74 @@ export const analyzeImage = async (base64: string, mime: string, mode: string, l
         const { data, mime: cleanMime } = await prepareImageForAPI(base64, mime);
         
         const systemInstruction = `
-        ROLE: Elite YouTube Forensic Auditor & AI Predictor.
-        MISSION: Analyze each provided image individually as a YouTube thumbnail based on advanced computer vision, behavioral psychology, and data analysis. You are feeding this detailed forensic information directly to the website so it understands exactly what is being done. The user will NOT use these images to generate new results like Masterpiece; your sole purpose is precise, forensic extraction of data.
+        You are a brutal YouTube thumbnail + title strategist AND a high-performance thumbnail design engine.
+
+        Your mission:
+        1) Judge thumbnails like a ruthless CTR expert
+        2) Then redesign them using elite visual systems
+
+        ---
+        🔴 CORE PRINCIPLE
+        Thumbnail = click trigger
+        Title = promise
+        Both must sell ONE idea instantly
+        If the viewer needs to think -> FAIL
+
+        ---
+        🧠 PART 1: BRUTAL ANALYSIS
+        Analyze thumbnail + title as ONE system.
+        Rules: Viewer sees thumbnail <1 second. Clarity is priority #1. No explanation allowed.
+        Evaluate:
+        1) Clarity: Can the idea be understood instantly?
+        2) Emotion: What exact emotion is triggered?
+        3) Curiosity: Does it create “I need to know more”?
+        4) Visual Hierarchy: Is there a clear focal point?
+        5) Simplicity: Is there only ONE idea?
+        6) Cognitive Load: Is it easy or mentally exhausting?
+        7) Mobile Readability: Is it clear when small?
+        8) Title Match: Do thumbnail + title reinforce each other?
+        9) Goal Clarity: Is the reward or outcome obvious?
+        10) Scroll Test: Would people STOP or SCROLL?
+
+        🚨 DETECT FAILURES: Call out Clutter, Too many ideas, Weak focus, No clear goal, Fake intensity, Title mismatch, “Cool but not clickable”. If it’s bad -> say it clearly.
+
+        ---
+        🎨 PART 3: DESIGN SYSTEM (MANDATORY REDESIGN)
+        1) COLOR SYSTEM (3 layers only): SUBJECT (Bold color), GOAL (Clean color), BACKGROUND (Calm). If colors compete -> FAIL.
+        2) VISUAL HIERARCHY: ENTRY -> ACTION -> GOAL.
+        3) SHAPE SYSTEM: Pyramid (challenge), Line (race), Circle (focus), Vertical (struggle).
+        4) SUBJECT CONTROL: One main subject ONLY.
+        5) EMOTION SYSTEM: Strong facial emotion. Background supports, not distracts.
+        6) BACKGROUND CONTROL: Remove noise.
+        7) SIMPLICITY FILTER: One idea? Instant understanding? Clear goal?
+        8) SCROLL TEST: STOP or SCROLL?
         
-        FORENSIC ANALYSIS PROTOCOL:
-        - **ULTRA-DETAILED INSPECTION**: You must analyze every single pixel. If there is a tiny scratch on a face, a speck of dust on a hand, a slight wrinkle in clothing, or a minor reflection in an eye, you MUST identify and analyze it. Not a single ant will be missed in the image.
-        - **DATA EXTRACTION**: The website will be fed a massive amount of information from your analysis. You must answer internal questions about these images (via the deep_analysis schema) to feed the website's understanding.
-        - **TEXT FORENSICS**: Any text, no matter how small or stylized, must be read and analyzed for its psychological impact and readability.
-        - **ANATOMICAL AUDIT**: Analyze skin texture, pore-level details, sweat, blood, dirt, exhaustion markers (dark circles, red eyes), tied up with rope, taped to walls/ceilings, or any physical imperfections.
-        - **ENVIRONMENTAL AUDIT**: Analyze background elements, lighting leaks, shadows, and atmospheric effects (smoke, fire, rain, snow, dirt, grime, storm clouds, lasers, explosions, water reflections, molten lava, ice, hydraulic presses, space/stars, swarms of animals/insects, massive piles of objects, night vision, giant food pools, real life board games, military equipment/soldiers, burning rooms, underwater/submarines) with extreme precision.
-        
-        VIRAL PATTERN BENCHMARKS (INTERNAL KNOWLEDGE BASE):
-        Evaluate the image against these high-performance archetypes:
-        1. **Extreme Comparison**: (e.g., $1 vs $100M, 3100° Lava vs -420° Ice, $1 Car vs $100M Car). High contrast between "poor/broken" and "luxury/gold", or extreme physical properties.
-        2. **The "Impossible" Trap/Survival**: (e.g., Spikes, Nuclear Bunker, Buried Alive, Trapped in Ice, Lost at Sea, Deserted Island, Red Circle, Space Station, Trapped in a plane). High biological stress response, claustrophobia, or danger.
-        3. **Massive Wealth Hook**: (e.g., Biting stacks of money, Gold Plane, Private Island, Lottery Winner, Eating Gold, Gold Lamborghini/Mansion, Beast Bank, Free Money). Triggers aspiration and greed.
-        4. **The "Free" Paradox**: (e.g., $0 Cars, Free Food/Restaurant, Everything Free Store). Triggers immediate skepticism and curiosity.
-        5. **Gamification of Reality**: (e.g., Giant Monopoly, Squid Game, Tug of War with a giant). Familiar games scaled to extreme reality.
-        6. **Heroic Scale**: (e.g., Standing on clouds, Jungle Explorer, Planting 20,000,000 Trees, Building 100 Houses, Building a massive island). Central subject dominating a vast, high-stakes environment or massive undertaking.
-        7. **Endurance/Suffering**: (e.g., Chained together, Buried for days, Prison, Surviving 24 Hours in extreme conditions, Staying in a circle for 100 days, Riding a rollercoaster for days, Sitting in a toilet for days, Buried in noodles/Lego). Visual markers of extreme physical or mental toll.
-        8. **Absurd Accumulation**: (e.g., Buying everything in a store, massive piles of cash/groceries/electronics/Lego). Overwhelming visual abundance.
-        9. **The "Hidden Treasure" / Dumpster Diving**: (e.g., Finding iPhones in trash, Exploring an ancient tomb). High contrast between a dirty/low-value environment and high-value items.
-        10. **The "Surprise Donation" / Philanthropy**: (e.g., Giving $100k to a streamer/homeless person, feeding a village, giving away a custom car, giving 1M food). Capturing genuine shock, life-changing moments, or massive scale charity.
-        11. **The "Hunted" / Extreme Chase**: (e.g., Hunted by assassins/bounty hunters, FBI chase, Hunted by a tank). High tension, dynamic action, and expressions of fear/urgency.
-        12. **The "Underdog" / Age Reversal**: (e.g., Competing against a 6-year-old, 1 vs 100 ages, 6 year old me vs adult me). Subverting expectations based on age or perceived ability.
-        13. **The "Mystery Box" / The "Button"**: (e.g., Giant wooden crate with a question mark, a giant red button). Pure curiosity gap driven by an unknown object or the consequence of an action.
-        14. **The "Massive Cleanup"**: (e.g., Cleaning the ocean/beach). Environmental scale, showing a huge problem and the effort to fix it.
-        15. **The "Heist" / High Security**: (e.g., Dodging lasers to steal a diamond, Top Secret Vault, Breaking into a house). High stakes, precision, tension, and forbidden access.
-        16. **The "Spectacle" / Absurd Scale**: (e.g., Covering a house in millions of lights, Giant Diamond Play Button, Real Life Willy Wonka Factory, Dropping a car on a train). Pure visual overload and absurdity.
-        17. **The "Destruction" / Extreme Force**: (e.g., Shooting a yacht with a minigun, Crushing a Lamborghini in a hydraulic press, Dropping a car on a train). High energy, explosions, and chaotic action.
-        18. **The "Phobia" Trigger**: (e.g., Bathtub full of snakes, Covered in Rats, Swimming with sharks). Direct targeting of primal human fears.
-        19. **Lawlessness / Anarchy**: (e.g., "NO LAWS" sign in a wasteland). Triggers rebellion and curiosity about a world without rules.
-        20. **The "Disguise" / Infiltration**: (e.g., Pretending to be a statue). Curiosity about whether the deception will work.
-        21. **The "Oblivious" / Imminent Danger**: (e.g., Girl with headphones ignoring zombies behind her). High contrast between a calm subject and an extreme background threat.
-        22. **The "Unlimited Power" / Blank Check**: (e.g., Giving a child a credit card). Triggers wish fulfillment and curiosity about the consequences.
-        23. **The "Global Competition" / Olympics**: (e.g., Every country in the world competes). Massive scale, representation, and high stakes.
-        24. **The "Disaster" / Mid-Air Emergency**: (e.g., Plane engine on fire). Extreme imminent danger and survival instincts.
-        25. **The "Transformation"**: (e.g., Day 1 vs Day 200 weight loss). Extreme visual change over time.
-        26. **The "Impossible Shot"**: (e.g., Dropping a basketball from a dam). Extreme precision and scale.
-        27. **The "Crossover" / Collab**: (e.g., YouTube Rewind with many famous creators). High recognition and star power.
-        28. **The "Defying Gravity" / Stuck**: (e.g., Taped to the ceiling).
-        29. **The "Creator Collab" / All-Stars**: (e.g., Group shot of famous creators).
-        30. **The "Unexpected Briefcase" / Public Surprise**: (e.g., Handing a briefcase of cash to a stranger).
-        31. **The "Underwater Explorer" / Marine Life**: (e.g., Submarine with sea turtles).
-        32. **The "Giant Board Game" / Real Life Battleship**: (e.g., Real ships exploding on a grid).
-        33. **The "Giant Food Pool" / Edible Ocean**: (e.g., Swimming in cereal with a giant spoon).
-        34. **The "Zero to Hero" / Massive Streamer Donation**: (e.g., $100k donation to a 0 viewer streamer).
-        35. **The "Cash Mountain" / Million Dollar Stack**: (e.g., Standing next to a literal mountain of money).
-        36. **The "Shark Swarm" / Stranded**: (e.g., On a small raft surrounded by sharks).
-        37. **The "Assassin Attack" / Close Call**: (e.g., Attacked by a hitman with a knife).
-        38. **The "Animal Swarm" / 100 Dogs**: (e.g., Surrounded by dozens of dogs).
-        39. **The "Running Tally" / Massive Debt/Payment**: (e.g., Showing a huge exact dollar amount paid).
-        40. **The "Red Circle" / Stay in the Circle**: (e.g., Pointing at a red circle on the ground).
-        41. **The "Night Vision Terror" / Paranormal**: (e.g., Night vision camera with a ghost/monster behind).
-        42. **The "Before & After" / Purification**: (e.g., Dirty water vs Clean water).
-        43. **The "Holiday Hoard" / Massive Gifts**: (e.g., Buried in Christmas presents).
-        44. **The "Time Lapse" / Day 1 vs Day 30**: (e.g., Showing the progression of a challenge over time).
-        45. **The "Burning Room" / Tied Up**: (e.g., Tied up on the floor while the room is on fire).
-        46. **The "Military Escort" / Army Collab**: (e.g., Surrounded by soldiers/military).
-        47. **The "Massive Crowd Challenge"**: (e.g., 100 people in a giant red circle on a field).
-        
-        CRITICAL RULES:
-        1. You cannot predict exact CTR. You provide a "Predicted Click Potential" score (0-100).
-        2. Curiosity is a derived metric, calculated from contrast, object rarity, composition, and text pattern.
-        3. You must evaluate "Viral Pattern Similarity" (how much it resembles top viral thumbnails like MrBeast's: big face, huge object, strong contrast, simple background).
-        
-        THE 8 PILLARS OF ANALYSIS:
-        1. **Readability at Scale (وضوح التصغير)**: Does it remain clear at 15% size (mobile view)? Are edges sharp?
-        2. **Visual Simplicity & Clutter (البساطة البصرية)**: Are there 3 or fewer main elements? Is there visual noise?
-        3. **Color Contrast & Psychology (التباين اللوني)**: Is there a high contrast ratio (e.g., >4.5:1)? Does it use pop-out colors (Red/Yellow/Orange vs Dark)?
-        4. **Facial Emotion (تعابير الوجه)**: Are faces visible? Do they show intense, exaggerated emotions (shock, joy, sadness, extreme pain/effort, genuine surprise, fear/panic, manic excitement, nausea, despair, extreme focus/tension, oblivious/calm vs danger, disgust/revulsion, extreme exhaustion)?
-        5. **Visual Focus Point / Saliency (نقطة التركيز)**: Does the eye immediately go to the most important element?
-        6. **Text Optimization (النص)**: Is the text 3-5 words max? Is it bold and highly contrasted?
-        7. **Curiosity Gap (الفضول)**: Does the image create an information gap (hidden object, extreme comparison, visual question)?
-        8. **Composition & Layout (التركيب)**: Does it follow the Rule of Thirds? Do leading lines or eye gaze point to the main subject/text?
-        
+        🔥 PART 4: HIGH CTR LOGIC
+        Winning formula: One person + One danger OR one goal + One clear situation.
+        Face Rule: No fully open mouth. Slightly open OR closed mouth only. Best: tension, subtle smile, shocked but controlled.
+
+        ${title ? `VIDEO TITLE PROVIDED: "${title}"` : ''}
+
+        ---
         OUTPUT SCHEMA:
+        You MUST return the analysis strictly in the following JSON format to integrate with the application.
         {
-            "visual_description": "A detailed description of what is actually in the image. Include forensic details like scratches, dust, dirt, sweat, or tiny imperfections found.",
-            "ctr_score": 100, // This represents "Predicted Click Potential" (0-100)
+            "visual_description": "A) One-sentence brutal verdict. F) Redesign plan: Core Idea, Color Plan, Composition Layout, Shape Logic, Emotion Plan. G) Final improved thumbnail concept.",
+            "ctr_score": 85,
             "pillars": [
-                // Must include exactly these 8 pillars + 1 for Viral Pattern Similarity
-                { "name": "Readability at Scale", "score": 80, "status": "High", "reasoning": "..." },
-                { "name": "Visual Simplicity", "score": 40, "status": "Low", "reasoning": "..." },
-                { "name": "Color Contrast", "score": 90, "status": "High", "reasoning": "..." },
-                { "name": "Facial Emotion", "score": 70, "status": "Medium", "reasoning": "..." },
-                { "name": "Visual Focus Point", "score": 85, "status": "High", "reasoning": "..." },
-                { "name": "Text Optimization", "score": 60, "status": "Medium", "reasoning": "..." },
-                { "name": "Curiosity Gap", "score": 95, "status": "High", "reasoning": "..." },
-                { "name": "Composition & Layout", "score": 80, "status": "High", "reasoning": "..." },
-                { "name": "Viral Pattern Similarity", "score": 88, "status": "High", "reasoning": "..." }
+                { "name": "Curiosity", "score": 80, "status": "High", "reasoning": "..." },
+                { "name": "Virality", "score": 40, "status": "Low", "reasoning": "..." },
+                { "name": "Idea", "score": 70, "status": "Medium", "reasoning": "..." },
+                { "name": "Clarity", "score": 60, "status": "Medium", "reasoning": "..." },
+                { "name": "Emotion", "score": 90, "status": "High", "reasoning": "..." }
             ],
-            "color_analysis": {
-                "score": 75,
-                "range": "50-75",
-                "reasoning": "..."
-            },
-            "pros": ["List of 3-5 strengths"],
-            "cons": ["List of 3-5 weaknesses (Actionable Feedback, e.g., 'Text has 8 words, reduce to 4')"],
-            "extracted_prompt": "A prompt that could recreate this exact style.",
-            "deep_analysis": [
-                { "question": "Does this trigger a biological response?", "answer": "...", "category": "BIOLOGICAL" }
-            ]
+            "pros": ["What is working"],
+            "cons": ["What is killing CTR (Failures detected)"],
+            "extracted_prompt": "A prompt that could recreate this exact style."
         }
         
         STRICTNESS: Be brutally honest. No humor. No fluff. If it's bad, say why it's bad.
+        CRITICAL: You MUST provide EXACTLY these 5 pillars: "Curiosity", "Virality", "Idea", "Clarity", "Emotion". Do not add any other pillars.
         
         CONSTRAINTS:
         - DO NOT include any base64 image data, URLs, or extremely long descriptions.
@@ -860,6 +1037,7 @@ export const analyzeImage = async (base64: string, mime: string, mode: string, l
                 systemInstruction,
                 responseMimeType: 'application/json',
                 maxOutputTokens: 4096,
+                temperature: 0,
                 responseSchema: {
                     type: Type.OBJECT,
                     properties: {
@@ -880,18 +1058,7 @@ export const analyzeImage = async (base64: string, mime: string, mode: string, l
                         },
                         pros: { type: Type.ARRAY, items: { type: Type.STRING } },
                         cons: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        extracted_prompt: { type: Type.STRING },
-                        deep_analysis: {
-                            type: Type.ARRAY,
-                            items: {
-                                type: Type.OBJECT,
-                                properties: {
-                                    question: { type: Type.STRING },
-                                    answer: { type: Type.STRING },
-                                    category: { type: Type.STRING }
-                                }
-                            }
-                        }
+                        extracted_prompt: { type: Type.STRING }
                     },
                     required: ["visual_description", "ctr_score", "pillars", "pros", "cons"]
                 }
@@ -905,9 +1072,229 @@ export const analyzeImage = async (base64: string, mime: string, mode: string, l
             cons: []
         });
         if (result && result.ctr_score) {
-            analysisCache.set(cacheKey, result);
+            setCachedAnalysis(cacheKey, result);
         }
         return result;
+    });
+};
+
+export const optimizeThumbnail = async (
+    base64Image: string, 
+    mimeType: string, 
+    title: string, 
+    analysis: AnalysisResult,
+    lang: string,
+    pastOptimizations: any[] = []
+): Promise<OptimizationResult> => {
+    return wrapGeminiCall(async () => {
+        const ai = getClient();
+        const { data, mime } = await prepareImageForAPI(base64Image, mimeType);
+        
+        // Step 1: Strategic Thinking & Prompt Generation (Brain)
+        let pastContext = "";
+        if (pastOptimizations.length > 0) {
+            pastContext = `\nPAST SUCCESSFUL OPTIMIZATIONS (Learn from these):\n`;
+            pastOptimizations.forEach((opt, idx) => {
+                pastContext += `Example ${idx + 1}:\n- Original Score: ${opt.originalScore}\n- New Score: ${opt.newScore}\n- Strategy Used: ${opt.explanation}\n- Prompt Used: ${opt.promptUsed}\n\n`;
+            });
+            pastContext += `Use these past successes to inform your strategy for this new thumbnail.\n`;
+        }
+
+        // Stage 1: Generate Concepts
+        let bestConcept: any = null;
+        let attempts = 0;
+        let conceptsLog: any[] = [];
+        
+        while (attempts < 2 && (!bestConcept || bestConcept.predictedCTR < 90)) {
+            const conceptPrompt = `
+            🎯 ROLE
+            You are an advanced AI Thumbnail Optimization Engine.
+            Your mission is to generate high-CTR thumbnail concepts based on the provided image and title.
+
+            ${pastContext}
+            🧠 INPUT:
+            - Current Title: "${title}"
+            - Current Analysis: ${JSON.stringify(analysis.pillars)}
+            - Current Score: ${analysis.ctr_score}
+            
+            Follow this exact thought process:
+            1. Generate 3 completely different thumbnail concepts:
+               - Concept A: Safe / classic
+               - Concept B: Curiosity-driven
+               - Concept C: Extreme / shocking
+            
+            2. Predict CTR score (0-100) for each based on:
+               - clarity speed (<1s recognition)
+               - emotional intensity
+               - novelty (seen vs unseen)
+               - curiosity gap strength
+            
+            Return the 3 concepts and their predicted scores.
+            `;
+
+            const conceptResponse = await ai.models.generateContent({
+                model: 'gemini-3-flash-preview',
+                contents: {
+                    parts: [
+                        { inlineData: { data, mimeType: mime } },
+                        { text: conceptPrompt }
+                    ]
+                },
+                config: {
+                    responseMimeType: 'application/json',
+                    responseSchema: {
+                        type: Type.OBJECT,
+                        properties: {
+                            concepts: {
+                                type: Type.ARRAY,
+                                items: {
+                                    type: Type.OBJECT,
+                                    properties: {
+                                        name: { type: Type.STRING },
+                                        description: { type: Type.STRING },
+                                        predictedCTR: { type: Type.NUMBER }
+                                    },
+                                    required: ["name", "description", "predictedCTR"]
+                                }
+                            }
+                        },
+                        required: ["concepts"]
+                    }
+                }
+            });
+
+            const conceptData = JSON.parse(conceptResponse.text || "{}");
+            const concepts = conceptData.concepts || [];
+            conceptsLog.push(concepts);
+            
+            if (concepts.length > 0) {
+                const currentBest = concepts.reduce((prev: any, current: any) => (prev.predictedCTR > current.predictedCTR) ? prev : current);
+                if (!bestConcept || currentBest.predictedCTR > bestConcept.predictedCTR) {
+                    bestConcept = currentBest;
+                }
+            }
+            attempts++;
+        }
+
+        if (!bestConcept) {
+            bestConcept = { name: "Fallback", description: "A highly optimized, high-contrast YouTube thumbnail.", predictedCTR: 85 };
+        }
+
+        // Stage 2: Refine and Optimize the Best Concept
+        const refinePrompt = `
+        🎯 ROLE
+        You are an advanced AI Thumbnail Optimization Engine.
+        We have selected the following high-CTR thumbnail concept:
+        - Concept Name: ${bestConcept.name}
+        - Concept Description: ${bestConcept.description}
+        - Predicted CTR: ${bestConcept.predictedCTR}
+
+        Now, apply the following optimization rules to this concept before generating the final prompt:
+        
+        1. Check if the concept looks similar to common YouTube patterns. IF similarity > threshold:
+           → FORCE a visual twist (unusual angle, unexpected element, abnormal scale, contradiction).
+           RULE: Familiar = ignored, Different = clicked
+        
+        2. Force extreme contrast (dark vs bright, rich vs poor, safe vs danger, normal vs abnormal).
+           IF contrast is medium:
+           → exaggerate it further.
+           RULE: Moderate contrast = mid CTR, Extreme contrast = viral CTR
+        
+        3. Ensure visual path. Eye flow must be:
+           1. Face / main subject
+           2. Secondary object
+           3. Curiosity element
+           IF no clear path:
+           → redesign layout.
+        
+        4. Compress text. IF text > 3 words:
+           → compress to 1–2 words OR symbols (e.g., "$0 → $1M" instead of "ZERO TO MILLION").
+           RULE: Reading kills speed, Symbols boost speed
+        
+        5. Detect visual overload. IF elements > 3:
+           → auto-remove lowest impact element until 2–3 elements only.
+        
+        6. Blur thumbnail mentally. Ask: "Can I still understand the idea?"
+           IF NO:
+           → rebuild thumbnail.
+
+        ✍️ STEP 7: FINAL PROMPT ENGINE
+        Based on the surviving, highly-optimized concept, generate the final image generation prompt.
+        
+        🧠 EXPLANATION SYSTEM:
+        Explain: What was wrong originally, what changed in this new concept, what visual twists/contrast/path optimizations were applied, and why it improves CTR.
+        
+        OUTPUT JSON FORMAT:
+        {
+            "prompt": "The detailed image generation prompt for the final selected concept...",
+            "suggestedTitle": "A new, better title (optional, keep original if good)",
+            "explanation": "What was wrong, what changed, and why it improves CTR..."
+        }
+        `;
+
+        const refineResponse = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: {
+                parts: [
+                    { inlineData: { data, mimeType: mime } },
+                    { text: refinePrompt }
+                ]
+            },
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        prompt: { type: Type.STRING },
+                        suggestedTitle: { type: Type.STRING },
+                        explanation: { type: Type.STRING }
+                    },
+                    required: ["prompt", "explanation"]
+                }
+            }
+        });
+
+        const strategyData = JSON.parse(refineResponse.text || "{}");
+        const finalPrompt = strategyData.prompt || "A highly optimized YouTube thumbnail.";
+        const explanation = strategyData.explanation || "Optimized for higher CTR.";
+        const newTitle = strategyData.suggestedTitle || title;
+
+        // Step 3: Regenerate Image
+        const imageResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: {
+                parts: [
+                    { inlineData: { data, mimeType: mime } },
+                    { text: `[STYLE: MrBeast] ${finalPrompt}. High contrast, vibrant colors, clear subject, emotional face, readable text.` }
+                ]
+            }
+        });
+
+        let newImageBase64 = '';
+        for (const part of imageResponse.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData && part.inlineData.data) {
+                newImageBase64 = part.inlineData.data;
+                break;
+            }
+        }
+
+        if (!newImageBase64) {
+            throw new Error("Failed to generate optimized image.");
+        }
+
+        // Step 4: Re-analyze the new image
+        const newAnalysis = await analyzeImage(newImageBase64, 'image/png', 'STRATEGY', lang, newTitle);
+
+        return {
+            optimizedImageBase64: newImageBase64,
+            optimizedTitle: newTitle,
+            explanation: explanation,
+            promptUsed: finalPrompt,
+            newScore: newAnalysis.ctr_score,
+            newPillars: newAnalysis.pillars,
+            concepts: conceptsLog[0] || [],
+            appliedTwists: strategyData.appliedTwists || []
+        };
     });
 };
 
@@ -936,32 +1323,43 @@ export const generateMasterStrategy = async (idea: string, lang: string): Promis
     });
 };
 
-export const enhancePrompt = async (rawPrompt: string, persona?: string, style?: string): Promise<string> => {
+export const enhancePrompt = async (rawPrompt: string): Promise<string> => {
   return wrapGeminiCall(async () => {
       const ai = getClient();
-      const personaObj = PERSONA_LIST.find(p => p.id === persona);
-      const personaName = personaObj ? personaObj.name : "the main subject";
-      const styleRule = (style && CHANNEL_STYLE_RULES[style]) ? CHANNEL_STYLE_RULES[style] : DEFAULT_STYLE;
       
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview', 
-        contents: `ROLE: World-Class YouTube Thumbnail Art Director.
-        TASK: Take the user's raw description and transform it into a highly detailed, narrative, hyper-realistic visual prompt.
-        
-        USER DESCRIPTION: "${rawPrompt || "A viral high-stakes scene"}"
-        IDENTIFIED PERSONA: ${personaName}
-        IDENTIFIED STYLE: ${styleRule}
-        
-        INSTRUCTIONS:
-        1. REPHRASE the description into a professional, cinematic visual prompt.
-        2. INTEGRATE the persona and style naturally into the narrative. Do not just list them.
-        3. ADD specific details: Describe intense facial expressions (grit, determination), cinematic lighting (rim lights, high contrast), and environmental textures (pore-level skin, 8K textures).
-        4. EYE LOGIC: Explicitly state that the eyes of ${personaName} MUST look directly at the viewer with intense focus.
-        5. COLOR LOGIC: If there are injuries or scars, they MUST be DEEP RED (blood-like). Never blue or yellow.
-        6. HYPER-REALISM: Use words like "Masterpiece", "Hyper-realistic", "Photorealistic", "8K resolution".
-        7. NO TEXT: Do not mention any text or words in the image.
-        
-        Return ONLY the enhanced English prompt. Max 60 words.`,
+        contents: `Role: You are a Prompt Enhancer, not a Prompt Generator.
+
+STRICT RULES:
+- Do NOT change the core idea.
+- Do NOT remove key elements (numbers, objects, context).
+- Do NOT replace the concept with a new one.
+- Keep the same meaning, intent, and structure.
+
+ALLOWED:
+- Improve clarity and wording
+- Add visual details (lighting, emotion, composition, colors)
+- Increase cinematic and viral appeal
+- Fix contradictions ONLY if they break the idea
+
+FORBIDDEN:
+- Changing the subject
+- Changing quantities (numbers like 50, 100, etc.)
+- Ignoring important elements
+- Simplifying into a different idea
+
+OUTPUT STYLE:
+- Same idea, but clearer, stronger, more visual, more clickable.
+
+If conflict exists:
+→ Resolve it while preserving the original idea.
+
+Input:
+${rawPrompt || "A viral high-stakes scene"}
+
+Output:
+Enhanced version only.`,
         config: {
             maxOutputTokens: 1024
         }
@@ -996,7 +1394,6 @@ export const magicFixImage = async (base64Image: string, mimeType: string, userI
     return wrapGeminiCall(async () => {
         const ai = getClient();
         const model = 'gemini-2.5-flash-image';
-        const imageSize = '1K';
         
         const { data, mime } = await prepareImageForAPI(base64Image, mimeType);
         
@@ -1007,21 +1404,19 @@ export const magicFixImage = async (base64Image: string, mimeType: string, userI
             contents: { 
                 parts: [
                     { inlineData: { data, mimeType: mime } },
-                    { text: `MAGIC STUDIO MISSION: ${userInstruction || "Improve this image."}. 
+                    { text: `Enhance this image based on the following instruction: ${userInstruction || "Improve this image."}. 
                     ${upscaleInstruction}
-                    ENHANCEMENT PROTOCOL:
-                    - If 'Enhance Clarity' is requested: Increase local contrast and edge definition.
-                    - If 'Enhance Sharpness' is requested: Sharpen textures and fine details.
-                    - If 'Enhance Colors' is requested: Boost saturation and vibrancy while maintaining realism.
-                    - If 'Restore Small Details' is requested: Reconstruct micro-textures and fine patterns.
-                    - If 'Enhance Facial Details' is requested: Focus on eyes, skin texture, and facial features.
-                    - If 'Remove Motion Blur' is requested: De-blur the image and stabilize edges.
-                    - Transform into ULTRA HYPER-REALISTIC quality.
-                    - 8K resolution, cinematic lighting, professional photography.
-                    - Match the high-energy aesthetic of top YouTube creators like MrBeast.` }
+                    
+                    STRICT ENHANCEMENT PROTOCOL:
+                    - DO NOT completely redraw the image. Keep it as close to the original as possible, just better quality.
+                    - DO NOT add random objects, text, or extreme weather unless they were already there.
+                    - KEEP faces and identities exactly the same, just better lit and sharper.
+                    - REALISTIC FACES: Faces MUST look like real human photographs, not 3D renders, cartoons, or AI-generated plastic faces. Skin texture should be highly realistic with natural pores and imperfections.
+                    - NO LETTERBOXING: Do NOT add black bars.
+                    - The final result must look like a professionally color-graded and retouched version of the original.` }
                 ] 
             },
-            config: { imageConfig: { aspectRatio: '16:9', imageSize: imageSize as any } }
+            config: { imageConfig: { aspectRatio: '16:9' } }
         });
         
         if (response.candidates?.[0]?.finishReason === 'SAFETY') {
@@ -1033,6 +1428,12 @@ export const magicFixImage = async (base64Image: string, mimeType: string, userI
                 return await resizeImageTo1280x720(part.inlineData.data, part.inlineData.mimeType || 'image/jpeg');
             }
         }
+        
+        const textResponse = response.candidates?.[0]?.content?.parts?.find(p => p.text)?.text;
+        if (textResponse) {
+            throw new Error(`Magic Studio failed. Model returned text instead of image: ${textResponse}`);
+        }
+        
         throw new Error("Magic Studio failed to produce an image.");
     });
 };
@@ -1043,7 +1444,7 @@ export const upscaleImage = async (base64Image: string, mimeType: string): Promi
         const { data, mime } = await prepareImageForAPI(base64Image, mimeType);
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
-            contents: { parts: [{ inlineData: { data, mimeType: mime } }, { text: "UPSCALE TO 4K. 16:9. Transform this image into a masterpiece of hyper-realism. Sharpen every edge, enhance every texture to pore-level detail, and ensure the lighting is cinematic and professional. The final result must be indistinguishable from a high-end photograph." }] },
+            contents: { parts: [{ inlineData: { data, mimeType: mime } }, { text: "Upscale this image to a higher resolution. Subtly enhance clarity, sharpness, and details without changing the original content, layout, or faces. Do not completely redraw the image. Keep it as close to the original as possible. NO LETTERBOXING: Do NOT add black bars." }] },
             config: { imageConfig: { aspectRatio: "16:9" } }
         });
         
@@ -1056,46 +1457,57 @@ export const upscaleImage = async (base64Image: string, mimeType: string): Promi
                 return await resizeImageTo1280x720(part.inlineData.data, part.inlineData.mimeType || 'image/jpeg');
             }
         }
+        
+        const textResponse = response.candidates?.[0]?.content?.parts?.find(p => p.text)?.text;
+        if (textResponse) {
+            throw new Error(`Upscale failed. Model returned text instead of image: ${textResponse}`);
+        }
+        
         throw new Error("Upscale failed to produce an image.");
     });
 };
 
-export const oneClickFix = async (base64Image: string, mimeType: string, analysis: any): Promise<string> => {
+export const oneClickFix = async (base64Image: string, mimeType: string, analysis: any, contextStr?: string): Promise<string> => {
     return wrapGeminiCall(async () => {
         const ai = getClient();
         const { data, mime } = await prepareImageForAPI(base64Image, mimeType);
         
-        const lowPillars = analysis.pillars?.filter((p: any) => p.score < 95).map((p: any) => p.name) || [];
-        const cons = analysis.cons?.join('. ') || "General optimization needed.";
+        const weaknesses = analysis?.pillars?.filter((p: any) => p.score < 90).map((p: any) => p.name).join(', ') || '';
+        const strengths = analysis?.pillars?.filter((p: any) => p.score >= 90).map((p: any) => p.name).join(', ') || '';
 
-        let surgicalInstructions = "";
-        if (lowPillars.includes('Virality')) surgicalInstructions += "- VIRALITY FIX: Inject high-stakes visual storytelling. Add extreme weather (lightning, storms), massive wealth (piles of cash, gold), or a ticking countdown clock to create urgency.\n";
-        if (lowPillars.includes('Clarity')) surgicalInstructions += "- CLARITY FIX: Aggressively simplify the background. Increase the subject size by 20%. Use a neon rim light (cyan or orange) to surgically separate the subject from the background.\n";
-        if (lowPillars.includes('Idea')) surgicalInstructions += "- IDEA FIX: Sharpen the conflict. If it's a comparison, make the difference between sides extreme. Use 'Before vs After' or '$1 vs $100M' logic with massive visual disparity.\n";
-        if (lowPillars.includes('Curiosity')) surgicalInstructions += "- CURIOSITY FIX: Add a 'Mystery Box'—an object partially obscured or a visual anomaly that defies logic, forcing the viewer to click to understand.\n";
-        if (lowPillars.includes('Emotion')) surgicalInstructions += "- EMOTION FIX: Exaggerate facial expressions to 'Beast-level' intensity. Pupils should be dilated, sweat beads visible, and mouth expressions should be extreme (but no tongue visible).\n";
+        const promptText = `You are a YouTube thumbnail expert.
+Rebuild the input thumbnail to maximize click-through rate based on the analysis.
+
+${contextStr ? `CONTEXT:\n${contextStr}\n` : ''}
+
+CURRENT ANALYSIS:
+- Strengths to PRESERVE (Score >= 90%): ${strengths || 'None identified.'}
+- Weaknesses to FIX (Score < 90%): ${weaknesses || 'None identified. Just make it more viral.'}
+
+DECISION PRIORITY SYSTEM:
+1. Focus on fixing the identified weaknesses to push their scores above 90%.
+2. CRITICAL CONSTRAINT: Do not degrade the identified strengths. Keep them exactly as they are or better.
+3. To fix weaknesses like 'Curiosity Gap', you MUST change multiple elements: enhance text, exaggerate facial expressions, improve color contrast, simplify the visual layout, and ensure clarity when scaled down.
+4. The new version must be a highly viral, click-optimized thumbnail.
+
+STRUCTURAL PRESERVATION (CRITICAL):
+- You MUST maintain the overall structure and composition of the original image.
+- You can change the shooting angle slightly or replace specific elements, but the fundamental perspective and layout MUST remain the same.
+
+Apply these improvements carefully:
+- Add strong emotional expression ONLY if emotion is a weakness.
+- Create one clear focal point.
+- Replace weak elements with stronger ones if needed.
+- Use bold, minimal text (max 3-4 words).
+
+Output a high-performing thumbnail that looks viral and modern. NO LETTERBOXING.`;
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
             contents: { 
                 parts: [
                     { inlineData: { data, mimeType: mime } },
-                    { text: `ONE-CLICK VIRAL FIX MISSION: 
-                    The objective is to push all 5 viral pillars (Virality, Clarity, Idea, Curiosity, Emotion) ABOVE 95%.
-                    
-                    CURRENT WEAKNESSES: ${lowPillars.join(', ')}.
-                    SPECIFIC AUDIT ISSUES: ${cons}.
-                    
-                    SURGICAL ENGINEERING PROTOCOL:
-                    ${surgicalInstructions || "- Overall Optimization: Apply the MasterPeace strategy to all elements for maximum CTR."}
-                    
-                    MASTER RULES:
-                    - ULTRA-SATURATION: Boost colors to be vibrant and eye-catching.
-                    - HIGH-KEY LIGHTING: Ensure the subject is perfectly lit with zero muddy shadows.
-                    - SHARPENING: Every edge must be razor-sharp.
-                    - HYPER-REALISM: Pore-level detail on skin, 8K cinematic textures.
-                    - NO TEXT: Do not add any words or letters.
-                    - The final result MUST be a viral masterpiece that commands attention on a mobile screen.` }
+                    { text: promptText }
                 ] 
             },
             config: { imageConfig: { aspectRatio: '16:9' } }
@@ -1110,6 +1522,12 @@ export const oneClickFix = async (base64Image: string, mimeType: string, analysi
                 return await resizeImageTo1280x720(part.inlineData.data, part.inlineData.mimeType || 'image/jpeg');
             }
         }
+        
+        const textResponse = response.candidates?.[0]?.content?.parts?.find(p => p.text)?.text;
+        if (textResponse) {
+            throw new Error(`One-Click Fix failed. Model returned text instead of image: ${textResponse}`);
+        }
+        
         throw new Error("One-Click Fix failed to produce an image.");
     });
 };
@@ -1119,11 +1537,38 @@ export const editThumbnail = async (base64Image: string, mimeType: string, promp
          const ai = getClient();
          const { data, mime } = await prepareImageForAPI(base64Image, mimeType);
          const parts: any[] = [{ inlineData: { data, mimeType: mime } }];
+         
          if (mask) {
              const { data: mData, mime: mMime } = await prepareImageForAPI(mask, 'image/png');
              parts.push({ inlineData: { data: mData, mimeType: mMime } });
          }
-         parts.push({ text: `EDIT MISSION: ${prompt}. Ensure the output is hyper-realistic, photorealistic, and matches the original lighting perfectly.` });
+
+         let instructionText = `Edit this image based on the following instruction: ${prompt}. 
+         
+         STRICT RULES:
+         - The user's instruction might be in ANY language (including Arabic, Moroccan Darija, Tamazight/Shilha, English, etc.). You must understand the intent perfectly regardless of the language.
+         - DO NOT completely redraw the image. Keep it as close to the original as possible.
+         - Only change what was explicitly requested in the instruction.
+         - Apply the edit EXACTLY where it makes sense based on the instruction.
+         - NO LETTERBOXING: Do NOT add black bars.
+         - Ensure the lighting and style of the new elements match the original image perfectly.
+         - CROWDS & GROUPS RULE: If adding a crowd or many people, they MUST look 100% photorealistic and human, not like 3D models or cartoons.
+         - COMPETITION & RIVALRY RULE: If adding a competition or battle, the people MUST look like they are actively competing with intense, aggressive facial expressions (grit, glaring) and dynamic action, not just standing passively.`;
+
+         if (mask) {
+             instructionText += `\n\nMASK INSTRUCTION:\n- A black and white mask image has been provided.\n- The WHITE areas in the mask indicate the exact regions you are allowed to modify.\n- The BLACK areas MUST remain 100% identical to the original image. Do not change them.`;
+         }
+
+         if (faceRef) {
+             const { data: fData, mime: fMime } = await prepareImageForAPI(faceRef, 'image/jpeg');
+             parts.push({ inlineData: { data: fData, mimeType: fMime } });
+             instructionText += `\n\nCRITICAL FACE SWAP INSTRUCTION:\n- The second image provided is a REFERENCE FACE.\n- You MUST perfectly recreate this exact person's face on the main subject in the first image.\n- Ensure 100% photorealistic likeness to the reference face.\n- CRITICAL: You MUST preserve the exact expressions, emotions, and lighting of the original image.\n- If the original image does not have a person, generate the reference person in the image with an expression matching the overall mood.\n- Do not make it look like a cartoon or 3D render.\n- It must look like a real photograph of the person in the reference image.\n- Ensure the new face matches the lighting, angle, and skin tone of the original body.`;
+         } else {
+             instructionText += `\n\nCRITICAL FACE PRESERVATION INSTRUCTION:\n- DO NOT alter the face in any way.\n- The face must remain 100% identical to the original image.\n- Do not add or change any facial features, hair, or expressions.\n- ONLY modify the specific elements requested in the prompt.`;
+         }
+
+         parts.push({ text: instructionText });
+
          const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
             contents: { parts },
@@ -1139,6 +1584,12 @@ export const editThumbnail = async (base64Image: string, mimeType: string, promp
                  return await resizeImageTo1280x720(part.inlineData.data, part.inlineData.mimeType || 'image/jpeg');
              }
          }
+         
+         const textResponse = response.candidates?.[0]?.content?.parts?.find(p => p.text)?.text;
+         if (textResponse) {
+             throw new Error(`Edit failed. Model returned text instead of image: ${textResponse}`);
+         }
+         
         return ""; 
     });
 };
@@ -1150,7 +1601,7 @@ export const generateBeastConcepts = async (idea: string, lang: string = 'Arabic
         
         const systemInstruction = `
         ROLE: AI Orchestrator Agent (Beast Mode).
-        MISSION: Transform a raw idea into 5 viral thumbnail concepts following MrBeast's "Conflict Engineering" and "Visual Psychology".
+        MISSION: Transform a raw idea into 5 viral thumbnail concepts following viral "Conflict Engineering" and "Visual Psychology".
         
         STAGE 1: IDEA PARSER
         - Extract Conflict (e.g., AI vs Human, $1 vs $100M).
@@ -1288,7 +1739,7 @@ export const transcribeAudio = async (base64Audio: string, mimeType: string): Pr
                 {
                     parts: [
                         { inlineData: { data: base64Audio, mimeType } },
-                        { text: "Transcribe the following audio into text accurately. You can handle any language spoken in the world, including Moroccan Arabic (Darija) or any other dialect. Transcribe it exactly in the original language spoken. Return the transcription as a single continuous paragraph without any artificial line breaks or forced newlines. Return ONLY the transcription text." }
+                        { text: "Transcribe the following audio into text accurately. You can handle any language spoken in the world, including Moroccan Arabic (Darija) or any other dialect. Transcribe it exactly in the original language spoken. Return the transcription as a single continuous paragraph without any artificial line breaks or forced newlines. Return ONLY the transcription text. IF THERE IS NO SPEECH, OR ONLY SILENCE/NOISE, RETURN EXACTLY AN EMPTY STRING AND NOTHING ELSE." }
                     ]
                 }
             ],

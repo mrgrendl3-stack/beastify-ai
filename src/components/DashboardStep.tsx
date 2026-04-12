@@ -36,10 +36,10 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({ isOpen, onClose, histor
                             const score = item.predictedCtr || getScore(item.id);
                             const realistic = getPredictionScore(score);
                             // Using text-color logic to map to bg colors for the small badge
-                            const badgeColor = score >= 85 ? 'bg-purple-600 text-white' : 
-                                               score >= 70 ? 'bg-green-600 text-white' : 
-                                               score >= 40 ? 'bg-yellow-600 text-black' : 
-                                               'bg-red-600 text-white';
+                            const badgeTextColor = score >= 85 ? 'text-purple-400' : 
+                                               score >= 70 ? 'text-green-400' : 
+                                               score >= 40 ? 'text-yellow-400' : 
+                                               'text-red-400';
                             
                             return (
                                 <div 
@@ -50,7 +50,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({ isOpen, onClose, histor
                                     <img src={item.src} alt="History" className="w-full h-32 object-cover opacity-70 group-hover:opacity-100 transition rounded-2xl" />
                                     
                                     {/* CTR Badge */}
-                                    <div className={`absolute top-2 left-2 ${badgeColor} text-[10px] font-black px-2 py-1 rounded-lg shadow-lg`}>
+                                    <div className={`absolute top-2 left-2 bg-black/30 backdrop-blur-md border border-white/10 ${badgeTextColor} text-[10px] font-black px-2 py-1 rounded-lg shadow-lg liquid-glass`}>
                                         {realistic.score}
                                     </div>
 
@@ -69,7 +69,10 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({ isOpen, onClose, histor
                         onClick={onClear}
                         className="mt-4 w-full flex items-center justify-center p-3 text-red-400 border border-gray-800 rounded-lg hover:bg-red-900/10 transition"
                     >
-                        <TrashIcon className="w-4 h-4 mr-2" /> Clear History
+                        <div className="liquid-glass-icon p-1.5 rounded-lg mr-2">
+                            <TrashIcon className="w-4 h-4" />
+                        </div>
+                        Clear History
                     </button>
                 )}
             </div>

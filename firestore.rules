@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'referralCode', 'credits', 'points', 'rank', 'streak', 'lastLoginDate', 'referralCount', 'completedTasks', 'achievements', 'dailyMissions', 'referredBy']) &&
+             data.uid is string &&
+             data.email is string &&
+             data.referralCode is string &&
+             data.credits is number &&
+             data.points is number &&
+             data.rank is string &&
+             data.streak is number &&
+             data.lastLoginDate is string &&
+             data.referralCount is number &&
+             data.completedTasks is list &&
+             data.achievements is list &&
+             data.dailyMissions is map &&
+             (data.referredBy == null || data.referredBy is string);
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "mrgrendl3@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid) && isValidUser(request.resource.data);
+      allow update: if isOwner(uid) && isValidUser(request.resource.data);
+    }
+
+    match /tasks/{taskId} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Only admin (manual)
+    }
+  }
+}

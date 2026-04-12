@@ -3,22 +3,28 @@ import Header from './components/Header';
 import InputSection from './components/InputSection'; 
 import CinematicViewer from './components/SelectionStep'; 
 import HistorySidebar from './components/DashboardStep'; 
+import TitleGenerateModal from './components/TitleGenerateModal';
 import Loader from './components/Loader';
+import MultiLoader from './components/MultiLoader';
 import AIChat from './components/AIChat';
-import BeastModeUI from './components/BeastModeUI';
 import ParticleBackground from './components/ParticleBackground';
-import { AppMode, GeneratedImage, HistoryItem, AnalysisResult, AnalysisMode, MasterStrategyResult, BeastModeResult, BeastConcept, ModeInputState } from './types';
-import { generateThumbnail, fileToBase64, urlToBase64, generateViralTitles, analyzeImage, generateMasterStrategy, editThumbnail, getPredictionScore, upscaleImage, magicFixImage, recreateThumbnail, generateMasterTitles, oneClickFix, enhanceAndCompletePrompt, generateBeastConcepts, engineerBeastVisual, simulateBeastCTR } from './services/geminiService';
+import CTRModal from './components/CTRModal';
+import { AppMode, GeneratedImage, HistoryItem, AnalysisResult, AnalysisMode, MasterStrategyResult, BeastModeResult, BeastConcept, ModeInputState, OptimizationResult } from './types';
+import { generateThumbnail, fileToBase64, urlToBase64, generateViralTitles, analyzeImage, generateMasterStrategy, editThumbnail, getPredictionScore, upscaleImage, magicFixImage, recreateThumbnail, generateMasterTitles, oneClickFix, enhanceAndCompletePrompt, generateBeastConcepts, engineerBeastVisual, simulateBeastCTR, optimizeThumbnail } from './services/geminiService';
 import { fetchVideoTitle } from './services/youtubeService';
-import { TextIcon, XMarkIcon, SparklesIcon, SearchIcon, EyeIcon, WandIcon } from './components/IconComponents';
+import { TextIcon, XMarkIcon, SparklesIcon, SearchIcon, EyeIcon, WandIcon, ArrowRightIcon, RefreshIcon } from './components/IconComponents';
+import { get, set } from 'idb-keyval';
+
+import { auth, db, signIn, signOut, getUserProfile, createUserProfile, UserProfile, addCredits, updateProgress, saveOptimization, getSuccessfulOptimizations } from './firebase';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { Gamification } from './components/Gamification';
+import BeforeAfterSlider from './components/BeforeAfterSlider';
 
 const INITIAL_INPUT_STATE: ModeInputState = {
   prompt: '',
   imageFile: null,
   imageUrl: '',
   preview: null,
-  selectedPersona: null,
-  selectedStyle: null,
   customFaceFile: null,
   customFacePreview: null,
   inspirationFiles: [],
@@ -27,13 +33,91 @@ const INITIAL_INPUT_STATE: ModeInputState = {
   isLowRes: false,
   youtubeUrl: '',
   inputType: 'UPLOAD',
-  briefDescription: ''
+  briefDescription: '',
+  videoTopic: '',
+  targetAudience: '',
+  mainHook: ''
 };
 
+const getPillarIcon = (name: string) => {
+    const n = name.toLowerCase();
+    if (n.includes('viral')) return <svg className="w-5 h-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 7 10c0-2 .5-3 2.5-4.5C11 4 11 2 11 2c0 1.5.5 2.5 2 4.5 1.5 2 2 3 2 4.5 0 1 .5 2 2 2s2-1.5 2-1.5z" /></svg>;
+    if (n.includes('clarity')) return <svg className="w-5 h-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>;
+    if (n.includes('idea') || n.includes('concept')) return <svg className="w-5 h-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>;
+    if (n.includes('curios')) return <svg className="w-5 h-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>;
+    if (n.includes('emotion')) return <svg className="w-5 h-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>;
+    if (n.includes('simplicity')) return <svg className="w-5 h-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>;
+    if (n.includes('mobile')) return <svg className="w-5 h-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>;
+    if (n.includes('title')) return <svg className="w-5 h-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>;
+    return <svg className="w-5 h-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>;
+};
+
+const PillarRow: React.FC<{ pillar: any }> = ({ pillar }) => {
+    const [expanded, setExpanded] = useState(false);
+    
+    const score = pillar.score;
+    const filledBars = Math.round(score / 10);
+    const totalBars = 10;
+    
+    let barColor = 'bg-[#ff0033]';
+    if (score >= 80) barColor = 'bg-[#00ffaa]';
+    else if (score >= 50) barColor = 'bg-[#ffaa00]';
+    
+    return (
+        <div 
+            className="flex justify-between items-center cursor-pointer hover:bg-white/5 p-2 rounded-xl transition-colors"
+            onClick={() => setExpanded(!expanded)}
+        >
+            <div className="flex-1 pr-4 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                    {getPillarIcon(pillar.name)}
+                    <span className="text-white font-bold text-[15px] tracking-wide">{pillar.name}</span>
+                </div>
+                
+                <div className="relative">
+                    <p className={`text-[13px] text-gray-400 leading-relaxed ${expanded ? '' : 'whitespace-nowrap overflow-hidden'}`}>
+                        {pillar.reasoning}
+                    </p>
+                    {!expanded && (
+                        <div className="absolute top-0 right-0 h-full w-20 bg-gradient-to-l from-[#0a0a0a] via-[#0a0a0a]/90 to-transparent flex items-center justify-end pointer-events-none">
+                            <span className="text-cyan-400 text-[13px] font-medium pl-1">
+                                More..
+                            </span>
+                        </div>
+                    )}
+                    {expanded && (
+                        <span className="text-cyan-400 text-[13px] font-medium mt-1 block">
+                            Less
+                        </span>
+                    )}
+                </div>
+            </div>
+            
+            <div className="flex gap-[3px] mt-1 shrink-0">
+                {Array.from({ length: totalBars }).map((_, i) => (
+                    <div 
+                        key={i} 
+                        className={`w-[3px] h-6 rounded-[1px] ${i < filledBars ? barColor : 'bg-[#333]'}`}
+                    ></div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+import { AnimatedScore } from './components/AnimatedScore';
+
+import { BugTrackerModal } from './components/BugTrackerModal';
+import ThumbnailGame from './components/game/ThumbnailGame';
+
 const App: React.FC = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [mode, setMode] = useState<AppMode>('PROMPT');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [showBugTracker, setShowBugTracker] = useState(false);
+  const [showGame, setShowGame] = useState(false);
   const [error, setError] = useState<string>('');
 
   const [inputStatesByMode, setInputStatesByMode] = useState<Record<AppMode, ModeInputState>>({
@@ -46,7 +130,9 @@ const App: React.FC = () => {
     'UPSCALE': { ...INITIAL_INPUT_STATE },
     'MASTER_STRATEGY': { ...INITIAL_INPUT_STATE },
     'EDIT': { ...INITIAL_INPUT_STATE },
-    'BEAST_MODE': { ...INITIAL_INPUT_STATE }
+    'BEAST_MODE': { ...INITIAL_INPUT_STATE },
+    'OPTIMIZE': { ...INITIAL_INPUT_STATE },
+    'GAME': { ...INITIAL_INPUT_STATE }
   });
   const [resultsByMode, setResultsByMode] = useState<Record<AppMode, GeneratedImage[]>>({
     'PROMPT': [],
@@ -58,12 +144,15 @@ const App: React.FC = () => {
     'UPSCALE': [],
     'MASTER_STRATEGY': [],
     'EDIT': [],
-    'BEAST_MODE': []
+    'BEAST_MODE': [],
+    'OPTIMIZE': [],
+    'GAME': []
   });
   const [analysisResultsByMode, setAnalysisResultsByMode] = useState<Record<string, AnalysisResult | null>>({});
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [viralTitles, setViralTitles] = useState<{title: string, score: number}[]>([]);
+  const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
   const [masterStrategy, setMasterStrategy] = useState<MasterStrategyResult | null>(null);
   const [beastModeResult, setBeastModeResult] = useState<BeastModeResult | null>(null);
   const [beastStage, setBeastStage] = useState<number>(0);
@@ -73,13 +162,80 @@ const App: React.FC = () => {
   const [isMounted, setIsMounted] = useState(false);
   const [lastParams, setLastParams] = useState<any>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
-  const [showCTRModal, setShowCTRModal] = useState(false);
+  const [ctrModalImage, setCtrModalImage] = useState<GeneratedImage | null>(null);
+  const [showOptimizationDetailsModal, setShowOptimizationDetailsModal] = useState(false);
   const [showZoomModal, setShowZoomModal] = useState(false);
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
+  const [selectedTitleForThumbnails, setSelectedTitleForThumbnails] = useState<string | null>(null);
+
+  const playNotificationSound = useCallback(() => {
+    // A more pleasant, soft chime sound
+    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/1114/1114-preview.mp3');
+    audio.play().catch(e => console.error('Error playing sound:', e));
+  }, []);
 
   useEffect(() => {
     setIsMounted(true);
+    const unsubscribe = onAuthStateChanged(auth, async (u: User | null) => {
+        setUser(u);
+        if (u) {
+            let p = await getUserProfile(u.uid);
+            if (!p) {
+                // Check for referral in URL
+                const urlParams = new URLSearchParams(window.location.search);
+                const referredBy = urlParams.get('ref') || undefined;
+                p = await createUserProfile(u, referredBy);
+            }
+            setProfile(p);
+        } else {
+            setProfile(null);
+        }
+    });
+
+    const loadState = async () => {
+      try {
+        const savedHistory = await get('history');
+        if (savedHistory) setHistory(savedHistory);
+
+        const savedViralTitles = await get('viralTitles');
+        if (savedViralTitles) setViralTitles(savedViralTitles);
+
+        const savedMasterStrategy = await get('masterStrategy');
+        if (savedMasterStrategy) setMasterStrategy(savedMasterStrategy);
+      } catch (e) {
+        console.error("Failed to load state from idb", e);
+      }
+    };
+    loadState();
+
+    return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!isMounted) return;
+    const saveState = async () => {
+      try {
+        await set('history', history);
+        await set('viralTitles', viralTitles);
+        await set('masterStrategy', masterStrategy);
+      } catch (e) {
+        console.error("Failed to save state to idb", e);
+      }
+    };
+    
+    // Debounce the save to prevent performance issues with large base64 strings
+    const timeoutId = setTimeout(saveState, 500);
+    return () => clearTimeout(timeoutId);
+  }, [history, viralTitles, masterStrategy, isMounted]);
+
+  const handleSignIn = async () => {
+      try {
+          await signIn();
+      } catch (err) {
+          console.error("Sign in failed", err);
+          setError("Sign in failed. Please try again.");
+      }
+  };
 
   const triggerCelebration = () => {
     if (window.confetti) {
@@ -87,24 +243,27 @@ const App: React.FC = () => {
     }
   };
 
-  const handleGenerate = async (prompt: string, imageFile: File | null, imageUrl: string | null, persona?: string, style?: string, faceFile?: File, analysisMode?: AnalysisMode, language?: string, maskData?: string, useInspiration?: boolean, isLowRes?: boolean, inspirationFiles?: File[]) => {
+  const handleGenerate = async (prompt: string, imageFile: File | null, imageUrl: string | null, faceFile?: File, analysisMode?: AnalysisMode, language?: string, maskData?: string, useInspiration?: boolean, isLowRes?: boolean, inspirationFiles?: File[], faceUrl?: string | string[], generationCount: number = 1) => {
     setError(''); setIsLoading(true); setAnalyzedVideoTitle(null);
     
-    try {
-        if (mode === 'BEAST_MODE') {
-            setBeastStage(1);
-            setLoadingMessage("🔥 ANALYZING CONFLICT & GENERATING CONCEPTS...");
-            const concepts = await generateBeastConcepts(prompt, language);
-            setBeastModeResult({ concepts });
-            setBeastStage(2);
-            setIsLoading(false);
-            return;
-        }
+    if (user && profile && profile.credits < 0 && mode !== 'OPTIMIZE') {
+        setError("Not enough credits! You need 10 credits to generate.");
+        setIsLoading(false);
+        return;
+    }
 
+    try {
         if (mode === 'TITLE' || mode === 'MASTER_TITLES') {
              setLoadingMessage("ENGINEERING STRATEGIC TITLES...");
              const titles = await generateMasterTitles(prompt, language);
              setViralTitles(titles);
+             
+             if (user) {
+                 await addCredits(user.uid, -10, 10);
+                 const updated = await getUserProfile(user.uid);
+                 if (updated) setProfile(updated);
+             }
+
              triggerCelebration();
              setIsLoading(false);
              return;
@@ -126,14 +285,30 @@ const App: React.FC = () => {
         } else if (imageUrl) {
              // It's a Raw URL
              try {
+                let finalImageUrl = imageUrl;
                 // If it's a YouTube URL, fetch the title for analysis context
                 if (imageUrl.includes('youtube.com') || imageUrl.includes('youtu.be')) {
                     fetchVideoTitle(imageUrl).then(t => {
                         if (t) setAnalyzedVideoTitle(t);
                     });
+                    
+                    // Extract YouTube ID and use thumbnail URL instead
+                    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+                    const match = imageUrl.match(regExp);
+                    if (match && match[2].length === 11) {
+                        try {
+                            finalImageUrl = `https://img.youtube.com/vi/${match[2]}/maxresdefault.jpg`;
+                            base64Image = await urlToBase64(finalImageUrl);
+                        } catch (e) {
+                            finalImageUrl = `https://img.youtube.com/vi/${match[2]}/0.jpg`;
+                            base64Image = await urlToBase64(finalImageUrl);
+                        }
+                    }
                 }
-                base64Image = await urlToBase64(imageUrl);
-                previewSrc = imageUrl; 
+                if (!base64Image) {
+                    base64Image = await urlToBase64(finalImageUrl);
+                }
+                previewSrc = finalImageUrl; 
              } catch (e) {
                  throw new Error("Could not process image URL. Please try uploading the image directly.");
              }
@@ -145,24 +320,103 @@ const App: React.FC = () => {
             inspirationBase64s = await Promise.all(inspirationFiles.map(f => fileToBase64(f)));
         }
 
+        // 3. Resolve Face Image
+        let faceBase64: string | string[] | undefined = undefined;
+        if (faceFile) {
+            faceBase64 = await fileToBase64(faceFile);
+        } else if (faceUrl) {
+            if (Array.isArray(faceUrl)) {
+                faceBase64 = await Promise.all(faceUrl.map(u => urlToBase64(u)));
+            } else {
+                faceBase64 = await urlToBase64(faceUrl);
+            }
+        }
+
         if (mode === 'MAGIC_FIX' || mode === 'UPSCALE') {
             setLoadingMessage(isLowRes ? "UPSCALING & FIXING..." : "EXECUTING MAGIC FIX...");
-            if (!base64Image) throw new Error("No image provided for Magic Fix.");
+            if (!base64Image) {
+                setIsLoading(false);
+                return;
+            }
             const fixedSrc = await magicFixImage(base64Image, mimeType, prompt, isLowRes);
-            const imgBatch: GeneratedImage[] = [{ id: Date.now().toString(), src: fixedSrc, originalSrc: previewSrc, prompt: prompt || (isLowRes ? "4K Upscale & Fix" : "Magic Fix"), timestamp: Date.now(), predictedCtr: 100 }];
+            
+            setLoadingMessage("ANALYZING CLICK POTENTIAL...");
+            const [genMime, genBase64] = fixedSrc.split(';base64,');
+            const genMimeType = genMime.split(':')[1];
+            const analysis = await analyzeImage(genBase64, genMimeType, 'STRATEGY', language!, prompt);
+
+            const imgBatch: GeneratedImage[] = [{ id: Date.now().toString(), src: fixedSrc, originalSrc: previewSrc, prompt: prompt || (isLowRes ? "4K Upscale & Fix" : "Magic Fix"), timestamp: Date.now(), predictedCtr: analysis.ctr_score }];
             setResultsByMode(prev => ({ ...prev, [mode]: imgBatch }));
+            setAnalysisResultsByMode(prev => ({ ...prev, [fixedSrc]: analysis }));
             setHistory(prev => [{...imgBatch[0], mode}, ...prev]);
+            
+            // Gamification: Reward for generation
+            if (user) {
+                await addCredits(user.uid, -10, 20); // Deduct 10 credits, add 20 XP
+                await updateProgress(user.uid, 'design_3_thumbnails');
+                
+                // Update local profile
+                const updated = await getUserProfile(user.uid);
+                if (updated) setProfile(updated);
+            }
+
             triggerCelebration();
             setIsLoading(false);
             return;
         }
 
+        if (mode === 'OPTIMIZE') {
+             if (!base64Image) {
+                 setError("An image is required for optimization.");
+                 setIsLoading(false);
+                 return;
+             }
+             if (user && profile && profile.credits < 0) {
+                 setError("Not enough credits! You need 20 credits to optimize.");
+                 setIsLoading(false);
+                 return;
+             }
+
+             setLoadingMessage("ANALYZING CTR PILLARS...");
+             const initialAnalysis = await analyzeImage(base64Image, mimeType, 'STRATEGY', language!, prompt);
+             
+             setLoadingMessage("ENGINEERING HIGH-CTR THUMBNAIL...");
+             let pastOptimizations: any[] = [];
+             if (user) {
+                 pastOptimizations = await getSuccessfulOptimizations(user.uid);
+             }
+             const result = await optimizeThumbnail(base64Image, mimeType, prompt || "Untitled", initialAnalysis, language!, pastOptimizations);
+             
+             setOptimizationResult(result);
+             setAnalyzedImagePreview(previewSrc);
+             setAnalysisResultsByMode(prev => ({ ...prev, [previewSrc]: initialAnalysis }));
+             
+             if (user) {
+                 await addCredits(user.uid, -20, 20); // Deduct 20 credits, add 20 XP
+                 const updated = await getUserProfile(user.uid);
+                 if (updated) setProfile(updated);
+             }
+
+             triggerCelebration();
+             setIsLoading(false);
+             return;
+        }
+
         if (mode === 'ANALYZE') {
+             setLastAnalysisMode(analysisMode || 'STRATEGY');
              if (base64Image) {
-                 setLoadingMessage("PERFORMING FORENSIC AUDIT...");
-                 const result = await analyzeImage(base64Image, mimeType, analysisMode || 'STRATEGY', language!);
+                 setLoadingMessage(analysisMode === 'DESCRIPTION' ? "WRITING DESCRIPTION..." : "PERFORMING FORENSIC AUDIT...");
+                 const result = await analyzeImage(base64Image, mimeType, analysisMode || 'STRATEGY', language!, prompt);
+                 
                  setAnalysisResultsByMode(prev => ({ ...prev, [previewSrc]: result }));
                  setAnalyzedImagePreview(previewSrc);
+                 
+                 if (user) {
+                     await addCredits(user.uid, -10, 10);
+                     const updated = await getUserProfile(user.uid);
+                     if (updated) setProfile(updated);
+                 }
+
                  setShowAnalysis(true);
                  setIsLoading(false);
                  return;
@@ -189,6 +443,13 @@ const App: React.FC = () => {
                  };
                  setAnalysisResultsByMode(prev => ({ ...prev, ['ENHANCED_PROMPT']: mockAnalysis }));
                  setAnalyzedImagePreview('ENHANCED_PROMPT');
+                 
+                 if (user) {
+                     await addCredits(user.uid, -10, 10);
+                     const updated = await getUserProfile(user.uid);
+                     if (updated) setProfile(updated);
+                 }
+
                  setIsLoading(false);
                  return;
              }
@@ -198,6 +459,13 @@ const App: React.FC = () => {
             setLoadingMessage("BUILDING STRATEGY...");
             const strategy = await generateMasterStrategy(prompt, language!);
             setMasterStrategy(strategy);
+            
+            if (user) {
+                await addCredits(user.uid, -10, 10);
+                const updated = await getUserProfile(user.uid);
+                if (updated) setProfile(updated);
+            }
+
             triggerCelebration();
             setIsLoading(false);
             return;
@@ -206,19 +474,22 @@ const App: React.FC = () => {
         // --- SPLIT RECREATE & EDIT LOGIC ---
         if (mode === 'EDIT' || mode === 'RECREATE') {
             setLoadingMessage(maskData ? "INPAINTING..." : "REIMAGINING...");
-            if (!base64Image) throw new Error("No base image provided.");
-
-            let faceBase64 = undefined;
-            if (faceFile) faceBase64 = await fileToBase64(faceFile);
+            if (!base64Image) {
+                setIsLoading(false);
+                return;
+            }
             
             let resultSrc = "";
 
             if (maskData) {
                 // MASK PRESENT -> Use 'Edit' (Inpainting)
-                resultSrc = await editThumbnail(base64Image, mimeType, prompt, faceBase64, maskData);
+                resultSrc = await editThumbnail(base64Image, mimeType, prompt, Array.isArray(faceBase64) ? faceBase64[0] : faceBase64, maskData);
+            } else if (!faceBase64) {
+                // NO MASK, NO FACE -> Use 'Edit' (General Image-to-Image with face preservation)
+                resultSrc = await editThumbnail(base64Image, mimeType, prompt);
             } else {
-                // NO MASK -> Use 'Recreate' (Image-to-Image / Face Swap)
-                const results = await recreateThumbnail(base64Image, mimeType, prompt, persona, faceBase64);
+                // NO MASK, FACE PRESENT -> Use 'Recreate' (Face Swap)
+                const results = await recreateThumbnail(base64Image, mimeType, prompt, faceBase64);
                 if (results && results.length > 0) {
                     resultSrc = results[0];
                 }
@@ -226,10 +497,17 @@ const App: React.FC = () => {
             
             if (!resultSrc) throw new Error("Generation failed to produce an image.");
 
-            setLastParams({ prompt, persona, baseImage: base64Image, mimeType, faceFile });
-            const imgBatch: GeneratedImage[] = [{ id: Date.now().toString(), src: resultSrc, originalSrc: previewSrc, prompt, timestamp: Date.now(), predictedCtr: 100 }];
+            setLoadingMessage("ANALYZING CLICK POTENTIAL...");
+            const [genMime, genBase64] = resultSrc.split(';base64,');
+            const genMimeType = genMime.split(':')[1];
+            const analysis = await analyzeImage(genBase64, genMimeType, 'STRATEGY', language!, prompt);
+
+            setLastParams({ prompt, baseImage: base64Image, mimeType, faceFile });
+            const imgBatch: GeneratedImage[] = [{ id: Date.now().toString(), src: resultSrc, originalSrc: previewSrc, prompt, timestamp: Date.now(), predictedCtr: analysis.ctr_score }];
             setResultsByMode(prev => ({ ...prev, [mode]: imgBatch }));
+            setAnalysisResultsByMode(prev => ({ ...prev, [resultSrc]: analysis }));
             setHistory(prev => [{...imgBatch[0], mode}, ...prev]);
+            playNotificationSound();
             setIsLoading(false);
             return;
         }
@@ -238,33 +516,142 @@ const App: React.FC = () => {
             setLoadingMessage("BEASTIFYING PROMPT...");
             const enhancedPrompt = await enhanceAndCompletePrompt(prompt, language!);
             setLoadingMessage("GENERATING VISUALS...");
-            const { images: imgSrcs, suggestedTitle } = await generateThumbnail(enhancedPrompt, persona, style, base64Image, mimeType, useInspiration, inspirationBase64s);
-            setLastParams({ prompt: enhancedPrompt, persona, style, base64Image, mimeType, useInspiration, inspirationBase64s });
-            const newBatch: GeneratedImage[] = imgSrcs.map((src, idx) => ({ id: Date.now().toString() + idx, src, prompt: enhancedPrompt, timestamp: Date.now(), suggestedTitle, predictedCtr: 100 }));
+            const { images: imgSrcs, suggestedTitle } = await generateThumbnail(enhancedPrompt, base64Image, mimeType, useInspiration, inspirationBase64s, faceBase64, generationCount);
+            if (!imgSrcs || imgSrcs.length === 0) throw new Error("Generation failed to produce an image.");
+            setLastParams({ prompt: enhancedPrompt, base64Image, mimeType, useInspiration, inspirationFiles });
+            
+            const newBatch: GeneratedImage[] = imgSrcs.map((src, i) => ({
+                id: Date.now().toString() + i,
+                src,
+                originalSrc: undefined,
+                prompt: enhancedPrompt,
+                timestamp: Date.now(),
+                suggestedTitle,
+                predictedCtr: undefined // undefined means analyzing
+            }));
+
             setResultsByMode(prev => ({ ...prev, [mode]: newBatch }));
             if (newBatch.length > 0) {
                 setHistory(prev => [{...newBatch[0], mode}, ...prev]);
                 triggerCelebration();
+                playNotificationSound();
+                
+                if (user && profile) {
+                    await addCredits(user.uid, -10 * generationCount, 20 * generationCount);
+                    await updateProgress(user.uid, 'design_3_thumbnails');
+                    const updatedProfile = await getUserProfile(user.uid);
+                    setProfile(updatedProfile);
+                }
             }
             setIsLoading(false);
+
+            // Asynchronous analysis
+            imgSrcs.forEach(async (finalSrc, i) => {
+                const [genMime, genBase64] = finalSrc.split(';base64,');
+                const genMimeType = genMime.split(':')[1];
+                try {
+                    let analysis = await analyzeImage(genBase64, genMimeType, 'STRATEGY', language!, enhancedPrompt);
+                    setAnalysisResultsByMode(prev => ({ ...prev, [finalSrc]: analysis }));
+                    setResultsByMode(prev => {
+                        const updatedBatch = [...prev[mode]];
+                        const imgIndex = updatedBatch.findIndex(img => img.src === finalSrc);
+                        if (imgIndex !== -1) {
+                            updatedBatch[imgIndex] = { ...updatedBatch[imgIndex], predictedCtr: analysis.ctr_score };
+                        }
+                        return { ...prev, [mode]: updatedBatch };
+                    });
+                } catch (err) {
+                    console.error(`Failed to analyze image ${i + 1}/${imgSrcs.length}:`, err);
+                    setResultsByMode(prev => {
+                        const updatedBatch = [...prev[mode]];
+                        const imgIndex = updatedBatch.findIndex(img => img.src === finalSrc);
+                        if (imgIndex !== -1) {
+                            updatedBatch[imgIndex] = { ...updatedBatch[imgIndex], predictedCtr: 50 };
+                        }
+                        return { ...prev, [mode]: updatedBatch };
+                    });
+                }
+            });
             return;
         }
 
-        const { images: imgSrcs, suggestedTitle } = await generateThumbnail(prompt, persona, style, base64Image, mimeType, useInspiration, inspirationBase64s);
-        setLastParams({ prompt, persona, style, base64Image, mimeType, useInspiration, inspirationBase64s });
-        const newBatch: GeneratedImage[] = imgSrcs.map((src, idx) => ({ id: Date.now().toString() + idx, src, prompt, timestamp: Date.now(), suggestedTitle, predictedCtr: 100 }));
+        const count = mode === 'BEAST_MODE' ? 4 : generationCount;
+        const { images: imgSrcs, suggestedTitle } = await generateThumbnail(prompt, base64Image, mimeType, useInspiration, inspirationBase64s, faceBase64, count);
+        if (!imgSrcs || imgSrcs.length === 0) throw new Error("Generation failed to produce an image.");
+        setLastParams({ prompt, base64Image, mimeType, useInspiration, inspirationFiles });
+        
+        const newBatch: GeneratedImage[] = imgSrcs.map((src, i) => ({
+            id: Date.now().toString() + i,
+            src,
+            originalSrc: undefined,
+            prompt,
+            timestamp: Date.now(),
+            suggestedTitle,
+            predictedCtr: undefined // undefined means analyzing
+        }));
+
         setResultsByMode(prev => ({ ...prev, [mode]: newBatch }));
         if (newBatch.length > 0) {
             setHistory(prev => [{...newBatch[0], mode}, ...prev]);
             triggerCelebration();
+            playNotificationSound();
+
+            if (user && profile) {
+                await addCredits(user.uid, -10 * count, 20 * count);
+                await updateProgress(user.uid, 'design_3_thumbnails');
+                const updatedProfile = await getUserProfile(user.uid);
+                setProfile(updatedProfile);
+            }
         }
+        setIsLoading(false);
+
+        // Asynchronous analysis
+        imgSrcs.forEach(async (finalSrc, i) => {
+            const [genMime, genBase64] = finalSrc.split(';base64,');
+            const genMimeType = genMime.split(':')[1];
+            try {
+                let analysis = await analyzeImage(genBase64, genMimeType, 'STRATEGY', language!, prompt);
+                setAnalysisResultsByMode(prev => ({ ...prev, [finalSrc]: analysis }));
+                setResultsByMode(prev => {
+                    const updatedBatch = [...prev[mode]];
+                    const imgIndex = updatedBatch.findIndex(img => img.src === finalSrc);
+                    if (imgIndex !== -1) {
+                        updatedBatch[imgIndex] = { ...updatedBatch[imgIndex], predictedCtr: analysis.ctr_score };
+                    }
+                    return { ...prev, [mode]: updatedBatch };
+                });
+            } catch (err) {
+                console.error(`Failed to analyze image ${i + 1}/${imgSrcs.length}:`, err);
+                setResultsByMode(prev => {
+                    const updatedBatch = [...prev[mode]];
+                    const imgIndex = updatedBatch.findIndex(img => img.src === finalSrc);
+                    if (imgIndex !== -1) {
+                        updatedBatch[imgIndex] = { ...updatedBatch[imgIndex], predictedCtr: 50 };
+                    }
+                    return { ...prev, [mode]: updatedBatch };
+                });
+            }
+        });
 
     } catch (err: any) { 
         console.error(err);
-        const errorMsg = err.message || "Operation failed.";
+        let errorMsg = "Operation failed.";
+        if (typeof err === 'string') {
+            errorMsg = err;
+        } else if (err instanceof Error) {
+            errorMsg = err.message;
+        } else if (err && typeof err === 'object') {
+            try {
+                errorMsg = JSON.stringify(err);
+            } catch (e) {
+                errorMsg = String(err);
+            }
+        } else {
+            errorMsg = String(err);
+        }
         
         // Handle Permission/API Key errors by triggering the selector
-        if (errorMsg.includes("ACCESS DENIED") || errorMsg.includes("permission") || errorMsg.includes("403")) {
+        if (errorMsg.includes("ACCESS DENIED") || errorMsg.includes("permission") || errorMsg.includes("403") || errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
           if (window.aistudio) {
             window.aistudio.openSelectKey();
           }
@@ -276,76 +663,95 @@ const App: React.FC = () => {
     }
   };
 
-  const handleOneClickFix = async () => {
-    if (!currentAnalysisResult || !analyzedImagePreview) return;
+  const handleOneClickFix = async (customImage?: string, customAnalysis?: AnalysisResult | null) => {
+    // If we already have an optimization result, we are iterating on it.
+    // Otherwise, we start from the original analysis.
+    const analysisToUse = customAnalysis || (optimizationResult ? {
+        visual_description: optimizationResult.explanation,
+        ctr_score: optimizationResult.newScore,
+        pillars: optimizationResult.newPillars,
+        pros: [],
+        cons: []
+    } : currentAnalysisResult);
+
+    const imageToUse = customImage || (optimizationResult ? `data:image/png;base64,${optimizationResult.optimizedImageBase64}` : analyzedImagePreview);
+    const titleToUse = optimizationResult?.optimizedTitle || inputStatesByMode[mode]?.prompt || inputStatesByMode['ANALYZE']?.prompt || "Untitled";
+
+    if (!analysisToUse) {
+        setError("Analysis data is not ready yet. Please wait a moment and try again.");
+        return;
+    }
+    if (!imageToUse) {
+        setError("Image data is missing.");
+        return;
+    }
+    
+    if (user && profile && profile.credits < 20) {
+        setError("Not enough credits! You need 20 credits for a One-Click Fix.");
+        return;
+    }
+
     setIsLoading(true);
     setLoadingMessage("APPLYING ONE-CLICK VIRAL FIX...");
+    setCtrModalImage(null); // Close modal if open
+
     try {
+        const lowPillars = analysisToUse.pillars.filter(p => p.score < 90);
+        const optimizeMessage = lowPillars.length > 0 ? `OPTIMIZING: ${lowPillars[0].name.toUpperCase()}...` : "APPLYING VIRAL ENHANCEMENTS...";
+        setLoadingMessage(optimizeMessage);
+        
         let base64 = "";
         let mime = "image/jpeg";
-        if (analyzedImagePreview.startsWith('data:')) {
-            base64 = analyzedImagePreview.split(',')[1];
-            mime = analyzedImagePreview.split(':')[1].split(';')[0];
+        if (imageToUse.startsWith('data:')) {
+            base64 = imageToUse.split(',')[1];
+            mime = imageToUse.split(':')[1].split(';')[0];
         } else {
-            base64 = await urlToBase64(analyzedImagePreview);
+            base64 = await urlToBase64(imageToUse);
         }
 
-        const fixedSrc = await oneClickFix(base64, mime, currentAnalysisResult);
-        const imgBatch: GeneratedImage[] = [{ id: Date.now().toString(), src: fixedSrc, originalSrc: analyzedImagePreview, prompt: "One-Click Viral Fix", timestamp: Date.now(), predictedCtr: 100 }];
-        setResultsByMode(prev => ({ ...prev, [mode]: imgBatch }));
-        setHistory(prev => [{...imgBatch[0], mode: 'MAGIC_FIX'}, ...prev]);
-        setAnalysisResultsByMode(prev => ({ ...prev, [analyzedImagePreview]: null }));
+        const language = "English"; // Defaulting to English for One-Click Fix
+
+        let pastOptimizations: any[] = [];
+        if (user) {
+            pastOptimizations = await getSuccessfulOptimizations(user.uid);
+        }
+
+        const result = await optimizeThumbnail(base64, mime, titleToUse, analysisToUse, language, pastOptimizations);
+
+        setOptimizationResult(result);
+        setShowAnalysis(false); // Hide the old analysis view
+
+        if (user) {
+            await addCredits(user.uid, -20, 10); // Deduct 20 credits, add 10 XP
+            await saveOptimization(user.uid, analysisToUse.ctr_score, result.newScore, result.promptUsed, result.explanation);
+            const updated = await getUserProfile(user.uid);
+            if (updated) setProfile(updated);
+        }
+
         triggerCelebration();
+        playNotificationSound();
     } catch (err: any) {
-        setError(err.message || "One-Click Fix failed.");
-    } finally {
-        setIsLoading(false);
-    }
-  };
-
-  const handleSelectBeastConcept = async (concept: BeastConcept) => {
-    if (!beastModeResult) return;
-    setIsLoading(true);
-    setBeastStage(3);
-    setLoadingMessage("🧠 OPTIMIZING VISUAL PSYCHOLOGY...");
-    try {
-        const engineering = await engineerBeastVisual(concept);
-        setBeastModeResult(prev => prev ? { ...prev, selectedConceptId: concept.id, engineering } : null);
-        
-        setBeastStage(4);
-        setLoadingMessage("🔬 SIMULATING CTR PERFORMANCE...");
-        const simulation = await simulateBeastCTR(concept, engineering);
-        setBeastModeResult(prev => prev ? { ...prev, simulation } : null);
-        
-        setBeastStage(5);
-        setLoadingMessage("🎨 GENERATING FINAL BEAST THUMBNAIL...");
-        // Use the concept description and engineering rules for the final prompt
-        const finalPrompt = `
-            CONCEPT: ${concept.description}. 
-            CONFLICT: ${concept.conflict}. 
-            EMOTION: ${concept.emotion}. 
-            ENGINEERING: ${engineering.eye_path}, ${engineering.color_psychology}, ${engineering.contrast_optimization}.
-            STYLE: MrBeast Hyper-Realistic.
-        `;
-        const { images } = await generateThumbnail(finalPrompt);
-        if (images && images.length > 0) {
-            setBeastModeResult(prev => prev ? { ...prev, finalImage: images[0] } : null);
-            const imgBatch: GeneratedImage[] = [{ id: Date.now().toString(), src: images[0], prompt: finalPrompt, timestamp: Date.now(), predictedCtr: simulation.ctr_score }];
-            setResultsByMode(prev => ({ ...prev, BEAST_MODE: imgBatch }));
-            setHistory(prev => [{...imgBatch[0], mode: 'BEAST_MODE'}, ...prev]);
-            triggerCelebration();
+        let errorMsg = "One-Click Fix failed.";
+        if (typeof err === 'string') {
+            errorMsg = err;
+        } else if (err instanceof Error) {
+            errorMsg = err.message;
+        } else if (err && typeof err === 'object') {
+            try {
+                errorMsg = JSON.stringify(err);
+            } catch (e) {
+                errorMsg = String(err);
+            }
         }
-    } catch (err: any) {
-        setError(err.message || "Beast Mode failed.");
+        setError(errorMsg);
     } finally {
         setIsLoading(false);
-        setBeastStage(0);
     }
   };
 
   const currentImages = resultsByMode[mode] || [];
   const currentAnalysisResult = analyzedImagePreview ? analysisResultsByMode[analyzedImagePreview] : null;
-  const realisticStats = currentAnalysisResult ? getPredictionScore(currentAnalysisResult.ctr_score) : { score: '0%', label: '', color: '', confidence: '' };
+  const realisticStats = currentAnalysisResult ? getPredictionScore(currentAnalysisResult.ctr_score) : { score: '0%', label: '', color: '', borderColor: '', shadowColor: '', confidence: '' };
 
   const handleInputStateChange = useCallback((newState: ModeInputState) => {
     setInputStatesByMode(prev => ({ ...prev, [mode]: newState }));
@@ -355,12 +761,80 @@ const App: React.FC = () => {
     <div className={`min-h-screen bg-black text-white transition-opacity duration-1000 ${isMounted ? 'opacity-100' : 'opacity-0'} relative overflow-hidden`}>
       <ParticleBackground />
       <div className="relative z-10">
-        <Header onOpenHistory={() => setIsHistoryOpen(true)} onOpenAnalyze={() => setMode('ANALYZE')} notificationPermission={'default'} onRequestNotification={() => {}} />
+        <Header 
+          onOpenHistory={() => setIsHistoryOpen(true)} 
+          onOpenAnalyze={() => setMode('ANALYZE')} 
+          onOpenBugTracker={() => setShowBugTracker(true)}
+          onOpenGame={() => setShowGame(true)}
+          notificationPermission={'default'} 
+          onRequestNotification={() => {}} 
+          user={user}
+          profile={profile}
+          onSignIn={handleSignIn}
+          onSignOut={() => signOut()}
+        />
         <main className="container mx-auto px-4 py-8 pb-32">
-        {error && <div className="bg-red-900/50 border border-red-500 text-red-200 p-4 rounded-2xl mb-6 flex justify-between items-center"><span>{error}</span><button onClick={() => setError('')}><XMarkIcon className="w-5 h-5" /></button></div>}
+        {error && (
+            <div className="max-w-4xl mx-auto mb-6">
+                <div className="bg-red-900/40 backdrop-blur-md border border-red-500/50 text-red-100 p-5 rounded-3xl shadow-2xl flex flex-col gap-4 animate-fade-in">
+                    <div className="flex justify-between items-start">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center border border-red-500/30">
+                                <XMarkIcon className="w-6 h-6 text-red-400" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-black uppercase tracking-widest text-red-300">
+                                    {error.includes('Quota') || error.includes('429') || error.includes('RESOURCE_EXHAUSTED') ? 'API Quota Exceeded' : 'System Error'}
+                                </h3>
+                                <p className="text-xs opacity-70 mt-0.5">Forensic analysis encountered a block.</p>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={() => setError('')}
+                            className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                        >
+                            <XMarkIcon className="w-5 h-5 opacity-50 hover:opacity-100" />
+                        </button>
+                    </div>
+                    
+                    <div className="bg-black/40 rounded-2xl p-4 border border-white/5">
+                        <p className="text-sm font-medium leading-relaxed italic opacity-90">"{error}"</p>
+                    </div>
+
+                    {(error.includes('Quota') || error.includes('429') || error.includes('RESOURCE_EXHAUSTED') || error.includes('permission') || error.includes('ACCESS DENIED')) && (
+                        <div className="flex flex-wrap gap-3">
+                            <button 
+                                onClick={() => window.aistudio?.openSelectKey()}
+                                className="bg-cyan-600 hover:bg-cyan-500 text-white text-[10px] font-black py-3 px-6 rounded-xl uppercase tracking-[0.2em] transition-all active:scale-95 shadow-[0_0_20px_rgba(6,182,212,0.3)]"
+                            >
+                                Switch API Key
+                            </button>
+                            <a 
+                                href="https://ai.google.dev/gemini-api/docs/billing" 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="bg-white/5 hover:bg-white/10 text-white text-[10px] font-black py-3 px-6 rounded-xl uppercase tracking-[0.2em] transition-all border border-white/10"
+                            >
+                                Billing Docs
+                            </a>
+                        </div>
+                    )}
+                </div>
+            </div>
+        )}
         
-        <div className={(isLoading && mode !== 'BEAST_MODE') ? 'opacity-50 pointer-events-none blur-sm' : ''}>
+        {/* Gamification Progress Bar */}
+        {profile && (
+            <div className="max-w-4xl mx-auto mb-12">
+                <div className="glass-panel rounded-3xl overflow-hidden border border-gray-800/50 shadow-2xl">
+                    <Gamification profile={profile} />
+                </div>
+            </div>
+        )}
+
+        <div className={isLoading ? 'opacity-50 pointer-events-none blur-sm' : ''}>
              <InputSection 
+                key={mode}
                 mode={mode} 
                 setMode={setMode} 
                 onGenerate={handleGenerate} 
@@ -369,134 +843,237 @@ const App: React.FC = () => {
                 predictedCtr={currentImages.length > 0 ? currentImages[0].predictedCtr : undefined}
                 inputState={inputStatesByMode[mode]}
                 onInputStateChange={handleInputStateChange}
+                playNotificationSound={playNotificationSound}
+                user={user}
              />
         </div>
         
-        {isLoading && mode !== 'BEAST_MODE' && <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-md"><Loader message={loadingMessage} /></div>}
-        
         <div className="mt-12 space-y-12">
-            {mode === 'BEAST_MODE' && beastModeResult && (
-                <BeastModeUI 
-                    result={beastModeResult} 
-                    stage={beastStage} 
-                    onSelectConcept={handleSelectBeastConcept} 
-                />
+            {isLoading && (
+                <div className="w-full flex justify-center animate-fade-in">
+                    {mode === 'BEAST_MODE' ? (
+                        <MultiLoader count={4} />
+                    ) : (
+                        <Loader message={loadingMessage} />
+                    )}
+                </div>
             )}
-
-            {currentImages.length > 0 && mode !== 'BEAST_MODE' && (
+            
+            {currentImages.length > 0 && !isLoading && !showAnalysis && !optimizationResult && (
                 <div className="relative">
-                    {/* FLOATING CTR BADGE */}
-                    <button 
-                        onClick={() => setShowCTRModal(true)}
-                        className="absolute -top-6 left-4 z-30 bg-black/40 backdrop-blur-xl border border-white/10 px-6 py-3 rounded-2xl shadow-2xl hover:bg-white/10 hover:border-white/30 transition-all active:scale-95 group liquid-glass"
-                    >
-                        <div className="flex flex-col items-center">
-                            <span className="text-3xl font-black text-white leading-none">
-                                {currentImages[0].predictedCtr ? getPredictionScore(currentImages[0].predictedCtr).score : '100%'}
-                            </span>
-                            <span className="text-[8px] font-black text-cyan-400 uppercase tracking-[0.2em] mt-1 opacity-0 group-hover:opacity-100 transition-opacity">Analyze</span>
-                        </div>
-                    </button>
-
                     <CinematicViewer 
                         key={currentImages[0]?.id || 'no-images'}
                         images={currentImages} 
                         onDelete={() => setResultsByMode(prev => ({ ...prev, [mode]: [] }))} 
                         onAnalyze={(img) => {
                             setMode('ANALYZE');
-                            handleGenerate('', null, img.src, undefined, undefined, undefined, 'STRATEGY', 'Arabic');
+                            handleGenerate('', null, img.src, undefined, 'STRATEGY', 'Arabic');
                         }} 
+                        onEdit={(img) => {
+                            setMode('EDIT');
+                            setInputStatesByMode(prev => ({
+                                ...prev,
+                                'EDIT': {
+                                    ...prev['EDIT'],
+                                    imageUrl: img.src,
+                                    preview: img.src
+                                }
+                            }));
+                        }}
                         onRegenerate={() => {
                             if (lastParams) {
-                                handleGenerate(lastParams.prompt, null, lastParams.baseImage ? `data:${lastParams.mimeType};base64,${lastParams.baseImage}` : null, lastParams.persona, lastParams.style, undefined, undefined, undefined, undefined, lastParams.useInspiration, undefined, lastParams.inspirationFiles);
+                                handleGenerate(lastParams.prompt, null, lastParams.baseImage ? `data:${lastParams.mimeType};base64,${lastParams.baseImage}` : null, undefined, undefined, undefined, undefined, lastParams.useInspiration, undefined, lastParams.inspirationFiles);
                             }
                         }} 
                         onZoom={(src) => {
                             setZoomedImage(src);
                             setShowZoomModal(true);
                         }}
+                        onShowCTR={(img) => setCtrModalImage(img)}
                     />
                 </div>
             )}
 
-            {showCTRModal && (
+            {ctrModalImage && (
+                <CTRModal 
+                    onClose={() => setCtrModalImage(null)}
+                    imageUrl={ctrModalImage.src}
+                    ctrScore={ctrModalImage.predictedCtr || 100}
+                    pillars={(analysisResultsByMode[ctrModalImage.src])?.pillars || []}
+                    onViralFix={() => handleOneClickFix(ctrModalImage.src, analysisResultsByMode[ctrModalImage.src])}
+                />
+            )}
+
+            {optimizationResult && (
+                <div className="max-w-4xl mx-auto space-y-8 animate-fade-in relative">
+                    <button 
+                        onClick={() => { setOptimizationResult(null); setShowAnalysis(true); }}
+                        className="absolute -top-4 -right-4 z-50 p-2 bg-gray-900 border border-gray-800 rounded-full hover:bg-gray-800 transition-colors shadow-xl"
+                    >
+                        <XMarkIcon className="w-5 h-5 text-gray-400" />
+                    </button>
+                    
+                    <div className="glass-panel rounded-3xl p-8 border border-emerald-500/20 flex flex-col items-center relative overflow-hidden">
+                        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent pointer-events-none"></div>
+                        
+                        {/* 1. Score */}
+                        <div className="mb-8 cursor-pointer group relative z-10" onClick={() => setShowOptimizationDetailsModal(true)}>
+                            <div className={`px-10 py-8 rounded-[2.5rem] border ${getPredictionScore(optimizationResult.newScore).borderColor} flex flex-col items-center ${getPredictionScore(optimizationResult.newScore).shadowColor} relative backdrop-blur-xl bg-black/40 transition-transform group-hover:scale-105`}>
+                                <AnimatedScore targetScore={optimizationResult.newScore} variant="circular" size={180} />
+                                <span className={`text-sm font-bold uppercase tracking-widest mt-6 opacity-80 ${getPredictionScore(optimizationResult.newScore).color}`}>{getPredictionScore(optimizationResult.newScore).label}</span>
+                            </div>
+                            <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-gray-900 text-emerald-400 text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-gray-800 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg">
+                                Click for detailed analysis
+                            </div>
+                        </div>
+
+                        {/* 2. Thumbnail */}
+                        <div className="w-full max-w-3xl aspect-video rounded-3xl overflow-hidden border border-emerald-500/30 mb-6 shadow-2xl relative group z-10">
+                            <img src={`data:image/png;base64,${optimizationResult.optimizedImageBase64}`} className="w-full h-full object-cover" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-6">
+                                <span className="text-emerald-400 font-bold uppercase tracking-widest text-sm flex items-center gap-2">
+                                    <SparklesIcon className="w-4 h-4" /> Optimized Image
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* 3. Title */}
+                        <div className="w-full max-w-3xl bg-black/40 p-5 rounded-2xl border border-emerald-500/20 mb-10 text-center z-10">
+                            <p className="text-emerald-500/80 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Suggested Title</p>
+                            <p className="text-2xl font-bold text-white">{optimizationResult.optimizedTitle}</p>
+                        </div>
+
+                        {/* 4. Pillars */}
+                        <div className="w-full max-w-3xl flex flex-col gap-4 mb-10 bg-[#0a0a0a] p-8 rounded-[2rem] border border-gray-800/50 shadow-xl z-10">
+                            <h3 className="text-sm font-black text-emerald-400 uppercase tracking-widest mb-2 text-center">New Diagnostic Breakdown</h3>
+                            {optimizationResult.newPillars.map((pillar, idx) => (
+                                <PillarRow key={idx} pillar={pillar} />
+                            ))}
+                        </div>
+
+                        {/* 5. Optimize CTR button (TRY AGAIN if < 90) */}
+                        {optimizationResult.newScore < 90 && (
+                            <div className="w-full max-w-3xl z-10">
+                                <button 
+                                    onClick={() => handleOneClickFix()}
+                                    className="w-full py-6 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-black text-xl rounded-2xl shadow-[0_0_40px_rgba(168,85,247,0.2)] transition-all flex items-center justify-center gap-3 active:scale-95 group"
+                                >
+                                    <RefreshIcon className="w-6 h-6 group-hover:animate-spin" /> TRY AGAIN (20 CREDITS)
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* OPTIMIZATION DETAILS MODAL */}
+            {showOptimizationDetailsModal && optimizationResult && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-xl p-4 animate-fade-in">
-                    <div className="glass-panel rounded-[3rem] w-full max-w-5xl max-h-[90vh] overflow-y-auto relative border border-cyan-500/20 shadow-[0_0_50px_rgba(6,182,212,0.1)]">
+                    <div className="glass-panel rounded-[3rem] w-full max-w-6xl max-h-[90vh] overflow-y-auto relative border border-emerald-500/20 shadow-[0_0_50px_rgba(16,185,129,0.1)]">
                         <button 
-                            onClick={() => setShowCTRModal(false)}
-                            className="absolute top-8 right-8 z-50 p-3 bg-gray-900 border border-gray-800 rounded-full hover:bg-gray-800 transition-colors shadow-2xl"
+                            onClick={() => setShowOptimizationDetailsModal(false)}
+                            className="absolute top-6 right-6 z-50 p-3 bg-gray-900 border border-gray-800 rounded-full hover:bg-gray-800 transition-colors shadow-2xl"
                         >
                             <XMarkIcon className="w-6 h-6 text-gray-400" />
                         </button>
 
-                        <div className="p-12">
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                                {/* IMAGE PREVIEW */}
-                                <div className="space-y-6">
-                                    <div className="aspect-video rounded-[2rem] overflow-hidden border-4 border-gray-800 shadow-2xl">
-                                        <img src={currentImages[0].src} className="w-full h-full object-cover" />
+                        <div className="p-8 md:p-12">
+                            <h2 className="text-3xl font-black text-white mb-8 uppercase tracking-widest flex items-center gap-3">
+                                <SparklesIcon className="w-8 h-8 text-emerald-400" /> Optimization Report
+                            </h2>
+
+                            <div className="mb-12">
+                                <h3 className="text-xl font-black text-emerald-400 uppercase tracking-widest text-center mb-6">Before & After Comparison</h3>
+                                <BeforeAfterSlider 
+                                    beforeImage={analyzedImagePreview || ''} 
+                                    afterImage={`data:image/png;base64,${optimizationResult.optimizedImageBase64}`} 
+                                />
+                                <div className="grid grid-cols-2 gap-8 mt-6">
+                                    <div className="bg-black/40 p-5 rounded-2xl border border-gray-800 text-center">
+                                        <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.2em] mb-1">Original Title</p>
+                                        <p className="text-white font-bold">{inputStatesByMode['ANALYZE']?.prompt || "Untitled"}</p>
                                     </div>
-                                    <div className="flex items-center justify-between px-4">
-                                        <div className="flex flex-col">
-                                            <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest">Predicted Click Potential</span>
-                                            <span className="text-5xl font-black text-white">{getPredictionScore(currentImages[0].predictedCtr || 100).score}</span>
+                                    <div className="bg-emerald-950/20 p-5 rounded-2xl border border-emerald-500/20 text-center">
+                                        <p className="text-emerald-500/80 text-[10px] font-black uppercase tracking-[0.2em] mb-1">Suggested Title</p>
+                                        <p className="text-white font-bold">{optimizationResult.optimizedTitle}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                <div className="lg:col-span-2 glass-panel rounded-3xl p-8 border border-gray-800 bg-[#0a0a0a]">
+                                    <h3 className="text-xl font-black text-white mb-6 uppercase tracking-widest">AI Explanation</h3>
+                                    <div className="prose prose-invert prose-emerald max-w-none">
+                                        <div className="text-gray-300 leading-relaxed whitespace-pre-wrap text-lg">
+                                            {optimizationResult.explanation}
                                         </div>
-                                        <div className={`px-6 py-3 rounded-2xl border ${getPredictionScore(currentImages[0].predictedCtr || 100).color} font-black uppercase tracking-widest`}>
-                                            {getPredictionScore(currentImages[0].predictedCtr || 100).label}
-                                        </div>
-                                        <div className="px-6 py-3 rounded-2xl border border-white/10 text-gray-400 font-bold uppercase tracking-widest">
-                                            Confidence: {getPredictionScore(currentImages[0].predictedCtr || 100).confidence}
+                                    </div>
+                                    
+                                    <div className="mt-8 pt-8 border-t border-gray-800/50">
+                                        <h4 className="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4">Generated Prompt</h4>
+                                        <div className="bg-black/50 p-5 rounded-2xl border border-gray-800 text-sm text-gray-400 font-mono leading-relaxed">
+                                            {optimizationResult.promptUsed}
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* ANALYSIS CONTENT */}
-                                <div className="space-y-8">
-                                    <div>
-                                        <h2 className="text-3xl font-black text-white mb-2">VIRAL AUDIT</h2>
-                                        <p className="text-gray-500 text-sm leading-relaxed">
-                                            This thumbnail has been analyzed using our proprietary Beast-Logic™ engine. Below is the breakdown of why this thumbnail is predicted to perform at this level.
-                                        </p>
+                                <div className="glass-panel rounded-3xl p-8 border border-gray-800 bg-[#0a0a0a] flex flex-col justify-center items-center text-center">
+                                    <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest mb-6">CTR Improvement</h3>
+                                    <div className="flex items-center justify-center gap-6 mb-8">
+                                        <div className="flex flex-col items-center">
+                                            <span className="text-4xl font-black text-gray-400">{currentAnalysisResult?.ctr_score}%</span>
+                                            <span className="text-[10px] text-gray-500 uppercase tracking-widest mt-2">Before</span>
+                                        </div>
+                                        <ArrowRightIcon className="w-8 h-8 text-emerald-400" />
+                                        <div className="flex flex-col items-center">
+                                            <span className="text-5xl font-black text-emerald-400">{optimizationResult.newScore}%</span>
+                                            <span className="text-[10px] text-emerald-500/80 uppercase tracking-widest mt-2">After</span>
+                                        </div>
                                     </div>
-
-                                    <div className="space-y-6">
-                                        {(currentAnalysisResult?.pillars?.length ?? 0) > 0 ? (
-                                            currentAnalysisResult!.pillars.map((pillar, idx) => (
-                                                <div key={idx} className="space-y-2">
-                                                    <div className="flex justify-between items-center">
-                                                        <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{pillar.name}</span>
-                                                        <span className="text-sm font-black text-white">{pillar.score}%</span>
-                                                    </div>
-                                                    <div className="h-2 w-full bg-gray-900 rounded-full overflow-hidden">
-                                                        <div 
-                                                            className={`h-full rounded-full transition-all duration-1000 ${pillar.score >= 95 ? 'bg-cyan-500' : pillar.score > 80 ? 'bg-green-500' : pillar.score > 50 ? 'bg-yellow-500' : 'bg-red-500'}`} 
-                                                            style={{ width: `${pillar.score}%` }}
-                                                        />
-                                                    </div>
-                                                    <p className="text-[11px] text-gray-500 leading-relaxed italic">"{pillar.reasoning}"</p>
-                                                </div>
-                                            ))
-                                        ) : (
-                                            <div className="text-sm text-gray-400 leading-relaxed">
-                                                {currentAnalysisResult?.visual_description}
-                                            </div>
-                                        )}
+                                    <div className="bg-emerald-500/10 text-emerald-400 px-6 py-3 rounded-full font-bold uppercase tracking-widest text-sm border border-emerald-500/20 mb-8">
+                                        +{(optimizationResult.newScore - (currentAnalysisResult?.ctr_score || 0))} Point Increase
                                     </div>
-
-                                    {!currentAnalysisResult && (
-                                        <div className="p-8 bg-gray-900/50 rounded-3xl border border-dashed border-gray-800 flex flex-col items-center justify-center text-center">
-                                            <EyeIcon className="w-12 h-12 text-gray-700 mb-4" />
-                                            <p className="text-gray-500 text-sm">Deep forensic data is being processed. Click "Analyze" below the image to generate a full report.</p>
+                                    
+                                    {optimizationResult.appliedTwists && optimizationResult.appliedTwists.length > 0 && (
+                                        <div className="w-full text-left mt-4 border-t border-gray-800/50 pt-6">
+                                            <h4 className="text-[10px] font-black text-emerald-500/80 uppercase tracking-widest mb-3">Applied Visual Twists</h4>
+                                            <ul className="space-y-2">
+                                                {optimizationResult.appliedTwists.map((twist, idx) => (
+                                                    <li key={idx} className="text-xs text-gray-400 flex items-start gap-2">
+                                                        <SparklesIcon className="w-3 h-3 text-emerald-400 mt-0.5 shrink-0" />
+                                                        <span>{twist}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
                                         </div>
                                     )}
                                 </div>
                             </div>
+                            
+                            {optimizationResult.concepts && optimizationResult.concepts.length > 0 && (
+                                <div className="mt-8 glass-panel rounded-3xl p-8 border border-gray-800 bg-[#0a0a0a]">
+                                    <h3 className="text-xl font-black text-white mb-6 uppercase tracking-widest">Generated Concepts</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        {optimizationResult.concepts.map((concept, idx) => (
+                                            <div key={idx} className={`p-5 rounded-2xl border ${concept.predictedCTR >= 90 ? 'border-emerald-500/30 bg-emerald-950/10' : 'border-gray-800 bg-black/40'}`}>
+                                                <div className="flex justify-between items-start mb-3">
+                                                    <h4 className="text-sm font-bold text-white uppercase tracking-widest">{concept.name}</h4>
+                                                    <span className={`text-xs font-black px-2 py-1 rounded-md ${concept.predictedCTR >= 90 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-800 text-gray-400'}`}>
+                                                        {concept.predictedCTR}%
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-gray-400 leading-relaxed">{concept.description}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
             )}
 
-            {currentAnalysisResult && showAnalysis && (
+            {currentAnalysisResult && showAnalysis && !optimizationResult && (
                 <div className="max-w-4xl mx-auto space-y-8 animate-fade-in relative">
                     <button 
                         onClick={() => setShowAnalysis(false)}
@@ -505,106 +1082,50 @@ const App: React.FC = () => {
                         <XMarkIcon className="w-5 h-5 text-gray-400" />
                     </button>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="md:col-span-2 glass-panel rounded-3xl p-8 border border-cyan-500/20">
-                            <div className="flex justify-between items-start mb-8">
-                                <div>
-                                    <h2 className="text-2xl font-black text-white flex items-center gap-3">
-                                        <EyeIcon className="w-6 h-6 text-cyan-400" /> VISION AUDIT
-                                    </h2>
-                                    <p className="text-gray-500 text-xs font-bold mt-1 uppercase tracking-widest">Forensic Thumbnail Breakdown</p>
-                                </div>
-                                <div className={`px-6 py-3 rounded-2xl border ${realisticStats.color} flex flex-col items-center shadow-lg relative group cursor-help`}>
-                                    <span className="text-3xl font-black leading-none">{realisticStats.score}</span>
-                                    <span className="text-[10px] font-bold uppercase tracking-widest mt-1 opacity-80">{realisticStats.label}</span>
-                                    
-                                    {/* CTR TRUTH TOOLTIP */}
-                                    <div className="absolute top-full mt-4 left-1/2 -translate-x-1/2 w-64 bg-black/95 border border-gray-800 p-4 rounded-2xl shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50">
-                                        <h4 className="text-[10px] font-black text-cyan-400 uppercase tracking-widest mb-3 border-b border-white/10 pb-2">PREDICTION CONFIDENCE</h4>
-                                        <div className="space-y-2 text-[10px]">
-                                            <div className="flex justify-between"><span>Confidence Level</span><span className="text-gray-400">{realisticStats.confidence}</span></div>
-                                            <div className="pt-2 border-t border-white/10 mt-2 text-gray-500 italic">
-                                                AI gives a Prediction Score, not a final verdict. Real performance must be validated via A/B testing.
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                    <div className="glass-panel rounded-3xl p-8 border border-cyan-500/20 flex flex-col items-center">
+                        {/* 1. Score */}
+                        <div className="mb-8 cursor-pointer group relative" onClick={() => setCtrModalImage(currentImages[0])}>
+                            <div className={`px-10 py-8 rounded-[2.5rem] border ${realisticStats.borderColor} flex flex-col items-center ${realisticStats.shadowColor} relative backdrop-blur-xl bg-black/40 transition-transform group-hover:scale-105`}>
+                                <AnimatedScore targetScore={parseInt(realisticStats.score)} variant="circular" size={180} />
+                                <span className={`text-sm font-bold uppercase tracking-widest mt-6 opacity-80 ${realisticStats.color}`}>{realisticStats.label}</span>
                             </div>
-
-                            {(currentAnalysisResult?.pillars?.length ?? 0) > 0 ? (
-                                <>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
-                                        {currentAnalysisResult!.pillars.map((pillar, idx) => (
-                                            <div key={idx} className="bg-black/40 p-4 rounded-2xl border border-gray-800 relative group">
-                                                <div className="flex justify-between items-center mb-2">
-                                                    <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{pillar.name}</span>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className={`text-xs font-black ${pillar.score >= 95 ? 'text-cyan-400' : pillar.score > 80 ? 'text-green-400' : pillar.score > 50 ? 'text-yellow-400' : 'text-red-400'}`}>{pillar.score}%</span>
-                                                        {pillar.score < 95 && <span className="text-[8px] font-bold text-gray-600 uppercase tracking-tighter">Target: 95%+</span>}
-                                                    </div>
-                                                </div>
-                                                <div className="h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
-                                                    <div className={`h-full rounded-full transition-all duration-1000 ${pillar.score >= 95 ? 'bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : pillar.score > 80 ? 'bg-green-500' : pillar.score > 50 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${pillar.score}%` }}></div>
-                                                </div>
-                                                <p className="text-[10px] text-gray-500 mt-2 leading-relaxed">{pillar.reasoning}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <h4 className="text-[10px] font-black text-green-500 uppercase tracking-widest mb-2">Viral Strengths</h4>
-                                            {currentAnalysisResult.pros?.map((pro, i) => (
-                                                <div key={i} className="flex items-start gap-2 text-xs text-gray-300">
-                                                    <span className="text-green-500 mt-0.5">✓</span>
-                                                    <span>{pro}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                        <div className="space-y-2">
-                                            <h4 className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-2">Critical Flaws</h4>
-                                            {currentAnalysisResult.cons?.map((con, i) => (
-                                                <div key={i} className="flex items-start gap-2 text-xs text-gray-300">
-                                                    <span className="text-red-500 mt-0.5">!</span>
-                                                    <span>{con}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </>
-                            ) : (
-                                <div className="text-sm text-gray-400 leading-relaxed bg-black/40 p-6 rounded-2xl border border-gray-800">
-                                    {currentAnalysisResult?.visual_description}
-                                </div>
-                            )}
+                            <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-gray-900 text-gray-400 text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-gray-800 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                Click for details
+                            </div>
                         </div>
 
-                        {(currentAnalysisResult?.pillars?.length ?? 0) > 0 && (
-                            <div className="space-y-6">
-                                <div className="glass-panel rounded-3xl p-6 border border-purple-500/20 relative overflow-hidden group">
-                                    <div className="absolute inset-0 bg-gradient-to-br from-purple-600/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                                    <h3 className="text-sm font-bold text-purple-400 mb-4 flex items-center gap-2">
-                                        <SparklesIcon className="w-4 h-4" /> VIRAL OPTIMIZER
-                                    </h3>
-                                    <p className="text-xs text-gray-400 mb-6 leading-relaxed relative z-10">
-                                        Our AI detected critical improvements. Click below to surgically fix all pillars to <span className="text-cyan-400 font-black">95%+</span>.
-                                    </p>
-                                    <button 
-                                        onClick={handleOneClickFix}
-                                        className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-black rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 relative z-10 active:scale-95"
-                                    >
-                                        <WandIcon className="w-5 h-5" /> ONE-CLICK VIRAL FIX
-                                    </button>
-                                    
-                                    {/* PILLAR STATUS INDICATOR */}
-                                    <div className="mt-4 flex justify-center gap-1">
-                                        {currentAnalysisResult!.pillars.map((p, i) => (
-                                            <div key={i} className={`h-1 w-4 rounded-full ${p.score >= 95 ? 'bg-cyan-500' : 'bg-gray-800'}`}></div>
-                                        ))}
-                                    </div>
-                                </div>
+                        {/* 2. Thumbnail */}
+                        <div className="w-full max-w-3xl aspect-video rounded-3xl overflow-hidden border border-gray-800/60 mb-6 shadow-2xl relative group">
+                            <img src={analyzedImagePreview || ''} className="w-full h-full object-cover" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-6">
+                                <span className="text-white font-bold uppercase tracking-widest text-sm">Original Image</span>
                             </div>
-                        )}
+                        </div>
+
+                        {/* 3. Title */}
+                        <div className="w-full max-w-3xl bg-black/40 p-5 rounded-2xl border border-gray-800/60 mb-10 text-center">
+                            <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Video Title</p>
+                            <p className="text-2xl font-bold text-white">{inputStatesByMode['ANALYZE']?.prompt || "Untitled"}</p>
+                        </div>
+
+                        {/* 4. Pillars */}
+                        <div className="w-full max-w-3xl flex flex-col gap-4 mb-10 bg-[#0a0a0a] p-8 rounded-[2rem] border border-gray-800/50 shadow-xl">
+                            <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-2 text-center">Diagnostic Breakdown</h3>
+                            {currentAnalysisResult!.pillars.map((pillar, idx) => (
+                                <PillarRow key={idx} pillar={pillar} />
+                            ))}
+                        </div>
+
+                        {/* 5. Optimize CTR button */}
+                        <div className="w-full max-w-3xl">
+                            <button 
+                                onClick={() => handleOneClickFix()}
+                                disabled={!analyzedImagePreview}
+                                className="w-full py-6 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-black text-xl rounded-2xl shadow-[0_0_40px_rgba(37,99,235,0.3)] transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed group"
+                            >
+                                <SparklesIcon className="w-6 h-6 group-hover:animate-pulse" /> 1-VIRAL FIX
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -625,25 +1146,66 @@ const App: React.FC = () => {
                 </div>
             )}
             
-            {viralTitles.length > 0 && (
-                <div className="max-w-2xl mx-auto bg-[#0A0A0A] border border-pink-900/30 rounded-3xl p-6 shadow-xl">
-                    <h2 className="text-xl font-bold text-pink-500 mb-6 flex items-center gap-2"><TextIcon className="w-6 h-6" /> WINNING TITLES</h2>
-                    <div className="space-y-3">
-                        {viralTitles.map((t, i) => (
-                            <div key={i} className="bg-[#111] p-4 rounded-2xl border border-gray-800 hover:border-pink-500 transition cursor-pointer group" onClick={() => { navigator.clipboard.writeText(t.title); alert("Copied!"); }}>
-                                <div className="flex justify-between">
-                                    <span className="group-hover:text-white transition-colors">{t.title}</span>
-                                    <span className="text-xs text-gray-500 font-mono font-bold">{t.score}%</span>
-                                </div>
+            {(mode === 'MASTER_TITLES' || mode === 'TITLE') && viralTitles.length > 0 && (
+                <div className="max-w-3xl mx-auto space-y-4 mb-8">
+                    {viralTitles.map((t, i) => (
+                        <div key={i} className="bg-[#1A1A1A] rounded-3xl p-6 shadow-xl flex items-center justify-between group border border-transparent hover:border-gray-800 transition-all">
+                            <span className="text-xl font-medium text-white">{t.title}</span>
+                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button 
+                                    onClick={() => { navigator.clipboard.writeText(t.title); alert("Copied!"); }}
+                                    className="w-10 h-10 rounded-full bg-[#2A2A2A] hover:bg-[#333] flex items-center justify-center text-gray-400 hover:text-white transition"
+                                    title="Copy Title"
+                                >
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                                </button>
+                                <button 
+                                    onClick={() => {
+                                        setInputStatesByMode(prev => ({ ...prev, 'PROMPT': { ...prev['PROMPT'], prompt: t.title } }));
+                                        setMode('PROMPT');
+                                    }}
+                                    className="w-10 h-10 rounded-full bg-[#2A2A2A] hover:bg-[#333] flex items-center justify-center text-gray-400 hover:text-white transition"
+                                    title="Use as Prompt"
+                                >
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+                                </button>
+                                <button 
+                                    onClick={() => setSelectedTitleForThumbnails(t.title)}
+                                    className="w-10 h-10 rounded-full bg-cyan-500/20 hover:bg-cyan-500/30 flex items-center justify-center text-cyan-400 transition"
+                                    title="Generate Thumbnails"
+                                >
+                                    <SparklesIcon className="w-5 h-5" />
+                                </button>
                             </div>
-                        ))}
-                    </div>
+                        </div>
+                    ))}
                 </div>
             )}
         </div>
       </main>
       
+      {showBugTracker && (
+          <BugTrackerModal onClose={() => setShowBugTracker(false)} />
+      )}
+
+      {showGame && (
+          <ThumbnailGame onClose={() => setShowGame(false)} />
+      )}
+
       <HistorySidebar isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} history={history} onSelect={(item) => { setResultsByMode(prev => ({ ...prev, [item.mode]: [item] })); setMode(item.mode); setIsHistoryOpen(false); }} onClear={() => setHistory([])} />
+      
+      {selectedTitleForThumbnails && (
+          <TitleGenerateModal 
+              title={selectedTitleForThumbnails} 
+              onClose={() => setSelectedTitleForThumbnails(null)} 
+              onGenerate={(title, count) => {
+                  setSelectedTitleForThumbnails(null);
+                  setMode('PROMPT');
+                  setInputStatesByMode(prev => ({ ...prev, PROMPT: { ...prev.PROMPT, prompt: title } }));
+                  handleGenerate(title, null, null, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, count);
+              }} 
+          />
+      )}
       </div>
     </div>
   );

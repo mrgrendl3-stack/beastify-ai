@@ -95,7 +95,9 @@ const BeastModeUI: React.FC<BeastModeUIProps> = ({ result, stage, onSelectConcep
                     animate={{ opacity: 1, y: 0 }}
                     className="inline-flex items-center gap-3 px-6 py-3 rounded-full text-orange-500 text-[10px] font-black uppercase tracking-[0.3em] liquid-glass border-orange-500/20"
                 >
-                    <SparklesIcon className="w-5 h-5" />
+                    <div className="liquid-glass-icon p-2 rounded-full">
+                        <SparklesIcon className="w-5 h-5" />
+                    </div>
                     Beast Mode Orchestrator
                 </motion.div>
                 <motion.h2 
@@ -120,7 +122,7 @@ const BeastModeUI: React.FC<BeastModeUIProps> = ({ result, stage, onSelectConcep
             <div className="flex items-center justify-center gap-4 max-w-3xl mx-auto">
                 {[1, 2, 3, 4, 5].map((s) => (
                     <div key={s} className="flex items-center gap-2">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm transition-all duration-500 ${stage >= s ? 'bg-orange-500 text-white shadow-[0_0_15px_rgba(249,115,22,0.5)]' : 'bg-gray-900 text-gray-700 border border-gray-800'}`}>
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm transition-all duration-500 liquid-glass-icon ${stage >= s ? 'bg-orange-500 text-white shadow-[0_0_15px_rgba(249,115,22,0.5)]' : 'bg-gray-900 text-gray-700 border border-gray-800'}`}>
                             {stage > s ? <CheckIcon className="w-5 h-5" /> : s}
                         </div>
                         {s < 5 && <div className={`h-1 w-8 md:w-16 rounded-full transition-all duration-500 ${stage > s ? 'bg-orange-500' : 'bg-gray-900'}`} />}
@@ -132,7 +134,9 @@ const BeastModeUI: React.FC<BeastModeUIProps> = ({ result, stage, onSelectConcep
             {(stage === 1 || stage === 3 || stage === 4) && (
                 <div className="max-w-md mx-auto">
                     <div className="flex items-center gap-2 mb-2 text-[10px] font-black text-orange-500 uppercase tracking-widest">
-                        <TerminalIcon className="w-3 h-3" />
+                        <div className="liquid-glass-icon p-1.5 rounded-lg">
+                            <TerminalIcon className="w-3 h-3" />
+                        </div>
                         Live Implementation Log
                     </div>
                     <LiveLog stage={stage} />
@@ -144,7 +148,9 @@ const BeastModeUI: React.FC<BeastModeUIProps> = ({ result, stage, onSelectConcep
                 <div className="space-y-8">
                     <div className="flex items-center justify-between">
                         <h3 className="text-xl font-black text-white uppercase tracking-widest flex items-center gap-2">
-                            <ZapIcon className="w-6 h-6 text-orange-500" />
+                            <div className="liquid-glass-icon p-2 rounded-xl">
+                                <ZapIcon className="w-6 h-6 text-orange-500" />
+                            </div>
                             Choose Your Viral Concept
                         </h3>
                         <span className="text-[10px] font-bold text-gray-500 uppercase">5 Strategies Generated</span>
@@ -178,7 +184,9 @@ const BeastModeUI: React.FC<BeastModeUIProps> = ({ result, stage, onSelectConcep
                                     <div className="w-full aspect-video bg-gray-900 rounded-2xl flex items-center justify-center border border-gray-800 group-hover:border-orange-500/30 transition-colors overflow-hidden relative">
                                         <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                                         <div className="text-center p-4 relative z-10">
-                                            <BrainIcon className="w-8 h-8 text-gray-700 mx-auto mb-2 group-hover:text-orange-500 transition-colors" />
+                                            <div className="liquid-glass-icon p-3 rounded-2xl mx-auto mb-2 inline-block">
+                                                <BrainIcon className="w-8 h-8 text-gray-700 group-hover:text-orange-500 transition-colors" />
+                                            </div>
                                             <p className="text-[10px] text-gray-600 font-bold uppercase tracking-widest leading-tight">
                                                 {concept.sketch_description}
                                             </p>
@@ -222,7 +230,9 @@ const BeastModeUI: React.FC<BeastModeUIProps> = ({ result, stage, onSelectConcep
                     {/* Engineering Details */}
                     <div className="space-y-6">
                         <div className="flex items-center gap-3">
-                            <WandIcon className="w-6 h-6 text-orange-500" />
+                            <div className="liquid-glass-icon p-2 rounded-xl">
+                                <WandIcon className="w-6 h-6 text-orange-500" />
+                            </div>
                             <h3 className="text-xl font-black text-white uppercase tracking-widest">Psychological Optimization</h3>
                         </div>
                         
@@ -242,7 +252,19 @@ const BeastModeUI: React.FC<BeastModeUIProps> = ({ result, stage, onSelectConcep
                                 ))
                             ) : (
                                 <div className="h-64 flex flex-col items-center justify-center bg-[#0a0a0a] border border-gray-800 border-dashed rounded-2xl space-y-4">
-                                    <div className="w-12 h-12 rounded-full border-4 border-gray-800 border-t-orange-500 animate-spin" />
+                                    <div className="relative w-24 aspect-video rounded-lg overflow-hidden flex items-center justify-center">
+                                        <div className="absolute w-[200%] h-[200%] bg-[conic-gradient(from_0deg,transparent_0_270deg,#f97316_360deg)] animate-[spin_2s_linear_infinite]" />
+                                        <div className="absolute inset-[2px] bg-[#0a0a0a] rounded-[6px] flex flex-col p-2 justify-between overflow-hidden">
+                                            <div className="flex justify-between items-start">
+                                                <div className="w-4 h-4 rounded-full bg-gray-800/80 animate-pulse" />
+                                                <div className="w-6 h-2 rounded-sm bg-gray-800/80 animate-pulse" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <div className="w-full h-2 rounded-sm bg-gray-800/80 animate-pulse" style={{ animationDelay: '150ms' }} />
+                                                <div className="w-2/3 h-2 rounded-sm bg-gray-800/80 animate-pulse" style={{ animationDelay: '300ms' }} />
+                                            </div>
+                                        </div>
+                                    </div>
                                     <div className="text-gray-600 font-black text-xs tracking-widest uppercase">Optimizing Visual Psychology...</div>
                                 </div>
                             )}
@@ -252,7 +274,9 @@ const BeastModeUI: React.FC<BeastModeUIProps> = ({ result, stage, onSelectConcep
                     {/* Simulation Details */}
                     <div className="space-y-6">
                         <div className="flex items-center gap-3">
-                            <TargetIcon className="w-6 h-6 text-red-500" />
+                            <div className="liquid-glass-icon p-2 rounded-xl">
+                                <TargetIcon className="w-6 h-6 text-red-500" />
+                            </div>
                             <h3 className="text-xl font-black text-white uppercase tracking-widest">CTR Simulation</h3>
                         </div>
 
@@ -300,7 +324,20 @@ const BeastModeUI: React.FC<BeastModeUIProps> = ({ result, stage, onSelectConcep
                                 </>
                             ) : (
                                 <div className="relative z-10 flex flex-col items-center gap-4">
-                                    <div className="w-32 h-32 rounded-full border-8 border-gray-800 border-t-orange-500 animate-spin" />
+                                    <div className="relative w-48 aspect-video rounded-xl overflow-hidden flex items-center justify-center shadow-[0_0_30px_rgba(249,115,22,0.15)]">
+                                        <div className="absolute w-[200%] h-[200%] bg-[conic-gradient(from_0deg,transparent_0_270deg,#f97316_360deg)] animate-[spin_2s_linear_infinite]" />
+                                        <div className="absolute inset-[3px] bg-[#0a0a0a] rounded-[9px] flex flex-col p-3 justify-between overflow-hidden">
+                                            <div className="absolute inset-0 bg-gradient-to-tr from-orange-500/5 to-red-500/5 animate-pulse" />
+                                            <div className="relative z-10 flex justify-between items-start">
+                                                <div className="w-6 h-6 rounded-full bg-gray-800/80 animate-pulse" />
+                                                <div className="w-10 h-3 rounded-md bg-gray-800/80 animate-pulse" />
+                                            </div>
+                                            <div className="relative z-10 space-y-1.5">
+                                                <div className="w-full h-3 rounded-md bg-gray-800/80 animate-pulse" style={{ animationDelay: '150ms' }} />
+                                                <div className="w-2/3 h-3 rounded-md bg-gray-800/80 animate-pulse" style={{ animationDelay: '300ms' }} />
+                                            </div>
+                                        </div>
+                                    </div>
                                     <span className="text-xs font-black text-gray-600 uppercase tracking-widest">Running A/B Simulation...</span>
                                 </div>
                             )}
@@ -331,7 +368,9 @@ const BeastModeUI: React.FC<BeastModeUIProps> = ({ result, stage, onSelectConcep
                             onClick={() => window.open(finalImage, '_blank')}
                             className="px-10 py-5 bg-white text-black font-black rounded-2xl hover:bg-gray-200 transition-all flex items-center gap-3 shadow-2xl active:scale-95"
                         >
-                            <EyeIcon className="w-6 h-6" />
+                            <div className="liquid-glass-icon p-2 rounded-xl">
+                                <EyeIcon className="w-6 h-6" />
+                            </div>
                             DOWNLOAD 4K
                         </button>
                         <button 

@@ -1,0 +1,47 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with credits, points, and gamification info",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "referralCode": { "type": "string" },
+        "referredBy": { "type": "string" },
+        "credits": { "type": "number" },
+        "points": { "type": "number" },
+        "rank": { "type": "string" },
+        "streak": { "type": "number" },
+        "lastLoginDate": { "type": "string" },
+        "referralCount": { "type": "number" },
+        "completedTasks": { "type": "array", "items": { "type": "string" } },
+        "achievements": { "type": "array", "items": { "type": "string" } },
+        "dailyMissions": { "type": "object" }
+      },
+      "required": ["uid", "email", "referralCode", "credits", "points"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Available tasks for users to earn credits",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "reward": { "type": "number" },
+        "type": { "type": "string" }
+      },
+      "required": ["id", "title", "reward"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User documents"
+    },
+    "/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Global tasks"
+    }
+  }
+}

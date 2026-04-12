@@ -93,12 +93,24 @@ const AIChat: React.FC<AIChatProps> = ({ currentProjectImages = [] }) => {
                 timestamp: Date.now()
             };
             setMessages(prev => [...prev, aiMessage]);
-        } catch (error) {
+        } catch (error: any) {
             console.error("Chat Error", error);
+            let errorText = "Communication Severed. Retrying uplink...";
+            if (typeof error === 'string') {
+                errorText = error;
+            } else if (error instanceof Error) {
+                errorText = error.message;
+            } else if (error && typeof error === 'object') {
+                try {
+                    errorText = JSON.stringify(error);
+                } catch (e) {
+                    errorText = String(error);
+                }
+            }
             const errorMessage: ChatMessage = {
                 id: (Date.now() + 1).toString(),
                 role: 'model',
-                text: "Communication Severed. Retrying uplink...",
+                text: errorText,
                 timestamp: Date.now()
             };
             setMessages(prev => [...prev, errorMessage]);
@@ -154,7 +166,9 @@ const AIChat: React.FC<AIChatProps> = ({ currentProjectImages = [] }) => {
                     onClick={() => setIsOpen(true)}
                     className="fixed bottom-8 right-8 z-50 p-5 rounded-3xl bg-gradient-to-br from-red-600 to-black text-white shadow-[0_10px_40px_rgba(220,38,38,0.3)] hover:scale-110 transition-all duration-500 group border border-red-500/40 liquid-glass"
                 >
-                    <TargetIcon className="w-10 h-10 text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]" />
+                    <div className="liquid-glass-icon p-3 rounded-2xl">
+                        <TargetIcon className="w-10 h-10 text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]" />
+                    </div>
                     <span className="absolute -right-1 -top-1 flex h-4 w-4">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-4 w-4 bg-red-600 border-2 border-white/20"></span>
@@ -174,7 +188,7 @@ const AIChat: React.FC<AIChatProps> = ({ currentProjectImages = [] }) => {
                     <div className="p-4 bg-[#111] border-b border-red-900/20 flex justify-between items-center">
                         <div className="flex flex-col space-y-1">
                             <div className="flex items-center space-x-2">
-                                <div className="p-1.5 bg-red-900/20 rounded-lg border border-red-900/50">
+                                <div className="liquid-glass-icon p-1.5 rounded-lg border border-red-900/50">
                                     <TargetIcon className="w-5 h-5 text-red-500" />
                                 </div>
                                 <div>
@@ -187,7 +201,9 @@ const AIChat: React.FC<AIChatProps> = ({ currentProjectImages = [] }) => {
                         </div>
 
                         <button onClick={() => setIsOpen(false)} className="text-gray-400 hover:text-white transition">
-                            <XMarkIcon className="w-5 h-5" />
+                            <div className="liquid-glass-icon p-1.5 rounded-lg">
+                                <XMarkIcon className="w-5 h-5" />
+                            </div>
                         </button>
                     </div>
 
@@ -195,7 +211,9 @@ const AIChat: React.FC<AIChatProps> = ({ currentProjectImages = [] }) => {
                     <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#050505] scrollbar-thin scrollbar-thumb-gray-800 relative">
                         {messages.length === 0 && (
                             <div className="flex flex-col items-center justify-center h-full text-center opacity-50">
-                                <TargetIcon className="w-12 h-12 text-red-900 mb-2" />
+                                <div className="liquid-glass-icon p-4 rounded-full mb-2">
+                                    <TargetIcon className="w-12 h-12 text-red-900" />
+                                </div>
                                 <p className="text-gray-400 text-sm">Ready to optimize your viral strategy.<br/>What is your next move?</p>
                             </div>
                         )}
@@ -249,7 +267,9 @@ const AIChat: React.FC<AIChatProps> = ({ currentProjectImages = [] }) => {
                                     onClick={handleRegenerate}
                                     className="flex items-center space-x-2 px-4 py-2 bg-black border border-gray-800 rounded-full text-xs text-gray-500 hover:text-white hover:border-red-500 transition shadow-lg group"
                                 >
-                                    <RefreshIcon className="w-3 h-3 group-hover:rotate-180 transition-transform duration-500" />
+                                    <div className="liquid-glass-icon p-1 rounded-full">
+                                        <RefreshIcon className="w-3 h-3 group-hover:rotate-180 transition-transform duration-500" />
+                                    </div>
                                     <span>Rethink Strategy</span>
                                 </button>
                             </div>
@@ -281,20 +301,24 @@ const AIChat: React.FC<AIChatProps> = ({ currentProjectImages = [] }) => {
                         <div className="flex items-center space-x-3">
                             <button 
                                 onClick={() => fileInputRef.current?.click()}
-                                className="p-3 text-gray-400 hover:text-white hover:bg-gray-800 rounded-2xl transition-all liquid-glass-icon"
+                                className="p-1 text-gray-400 hover:text-white hover:bg-gray-800 rounded-2xl transition-all"
                                 title="Upload File"
                             >
-                                <PaperClipIcon className="w-6 h-6" />
+                                <div className="liquid-glass-icon p-2 rounded-xl">
+                                    <PaperClipIcon className="w-6 h-6" />
+                                </div>
                             </button>
 
                             {/* Attach Current Work Button */}
                             {currentProjectImages.length > 0 && (
                                 <button 
                                     onClick={attachCurrentWork}
-                                    className="p-3 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-2xl transition-all border border-red-500/30 liquid-glass-icon"
+                                    className="p-1 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-2xl transition-all border border-red-500/30"
                                     title="Analyze Current Asset"
                                 >
-                                    <TargetIcon className="w-6 h-6" />
+                                    <div className="liquid-glass-icon p-2 rounded-xl">
+                                        <TargetIcon className="w-6 h-6" />
+                                    </div>
                                 </button>
                             )}
 
@@ -319,9 +343,11 @@ const AIChat: React.FC<AIChatProps> = ({ currentProjectImages = [] }) => {
                             <button 
                                 onClick={() => handleSend()}
                                 disabled={!input.trim() && selectedImages.length === 0}
-                                className="p-3.5 bg-red-700 text-white rounded-2xl hover:bg-red-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-lg shadow-red-900/20 active:scale-90"
+                                className="p-1 bg-red-700 text-white rounded-2xl hover:bg-red-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-lg shadow-red-900/20 active:scale-90"
                             >
-                                <SendIcon className="w-6 h-6" />
+                                <div className="liquid-glass-icon p-2.5 rounded-xl">
+                                    <SendIcon className="w-6 h-6" />
+                                </div>
                             </button>
                         </div>
                     </div>
