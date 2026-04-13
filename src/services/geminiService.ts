@@ -97,7 +97,11 @@ const safeJsonParse = (text: string | undefined, fallback: any = {}) => {
 };
 
 const getClient = () => {
-  const apiKey = (process.env.API_KEY || process.env.GEMINI_API_KEY) as string;
+  // Support both Vite's import.meta.env (for Vercel) and process.env (for AI Studio)
+  const apiKey = (
+    (import.meta as any).env?.VITE_GEMINI_API_KEY || 
+    (typeof process !== 'undefined' ? (process.env.API_KEY || process.env.GEMINI_API_KEY) : undefined)
+  ) as string;
   return new GoogleGenAI({ apiKey });
 };
 

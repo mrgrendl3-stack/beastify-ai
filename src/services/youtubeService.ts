@@ -1,7 +1,7 @@
 
 // --- YOUTUBE DATA API SERVICE ---
 
-const YOUTUBE_API_KEY: string = (import.meta as any).env.VITE_YOUTUBE_API_KEY || "AIzaSyBnkDRxJTDAi09HpMvE96NCKZjDS_zeizs";
+const YOUTUBE_API_KEY: string = (import.meta as any).env.VITE_YOUTUBE_API_KEY || "";
 
 export interface YouTubeVideo {
   id: string;
