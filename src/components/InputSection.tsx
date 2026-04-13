@@ -635,8 +635,8 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
       <input ref={inspirationInputRef} type="file" className="hidden" onChange={handleInspirationChange} accept="image/*" multiple />
 
       {/* Main Input Panel */}
-      <div className="relative bg-[#0a0a0a] border border-gray-800/50 rounded-[2.5rem] p-8 shadow-2xl">
-          <div className="space-y-8">
+      <div className="relative bg-[#0a0a0a] border border-gray-800/50 rounded-[2.5rem] p-8 shadow-2xl min-h-[500px] flex flex-col">
+          <div className="space-y-8 flex-1">
             {/* Navigation Tabs - Horizontal layout with icon next to text */}
             <div className="flex items-center justify-start md:justify-center gap-2 md:gap-4 overflow-x-auto no-scrollbar py-2 px-2 border-b border-gray-800/30 pb-6">
                 {navItems.map((item, index) => (
@@ -970,18 +970,29 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
               (mode === 'ANALYZE' && inputType !== 'URL' && analysisMode !== 'DESCRIPTION')) && (
               <div className="space-y-3">
                 <div className="relative">
-                  <textarea 
-                    value={prompt || ''} 
-                    onChange={(e) => setPrompt(e.target.value)} 
-                    placeholder={mode === 'MASTER_TITLES' ? "Describe your video content to generate viral titles..." : (mode === 'OPTIMIZE' || mode === 'ANALYZE') ? "Enter your video title here..." : "Describe your thumbnail idea... (e.g., 'Surviving 50 hours in Antarctica')"}
-                    className={`w-full h-40 bg-black/40 border rounded-3xl p-4 md:p-6 pb-16 md:pb-20 text-white text-base md:text-lg placeholder:text-gray-700 transition-all focus:outline-none resize-none border-gray-800/50 focus:border-cyan-500/50`}
-                  />
+                  {mode === 'ANALYZE' ? (
+                    <input 
+                      type="text"
+                      value={prompt || ''} 
+                      onChange={(e) => setPrompt(e.target.value)} 
+                      placeholder="Enter your video title here..."
+                      className="w-full h-14 bg-black/40 border rounded-2xl px-6 text-white text-base md:text-lg placeholder:text-gray-700 transition-all focus:outline-none border-gray-800/50 focus:border-cyan-500/50"
+                    />
+                  ) : (
+                    <textarea 
+                      value={prompt || ''} 
+                      onChange={(e) => setPrompt(e.target.value)} 
+                      placeholder={mode === 'MASTER_TITLES' ? "Describe your video content to generate viral titles..." : mode === 'OPTIMIZE' ? "Enter your video title here..." : "Describe your thumbnail idea... (e.g., 'Surviving 50 hours in Antarctica')"}
+                      className="w-full h-40 bg-black/40 border rounded-3xl p-4 md:p-6 pb-16 md:pb-20 text-white text-base md:text-lg placeholder:text-gray-700 transition-all focus:outline-none resize-none border-gray-800/50 focus:border-cyan-500/50"
+                    />
+                  )}
                   
-                  {/* Centered 4 Icons Row */}
-                  <div className="absolute left-1/2 -translate-x-1/2 bottom-4 flex items-center gap-2 md:gap-4 px-4 py-2 bg-gray-900/90 backdrop-blur-md rounded-2xl border border-gray-800/50 shadow-2xl z-10">
-                      
-                      {/* Generate Mode Icons (5 Icons) */}
-                      {(mode === 'PROMPT') && (
+                  {/* Centered 4 Icons Row - Only show if not ANALYZE */}
+                  {mode !== 'ANALYZE' && (
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-4 flex items-center gap-2 md:gap-4 px-4 py-2 bg-gray-900/90 backdrop-blur-md rounded-2xl border border-gray-800/50 shadow-2xl z-10">
+                        
+                        {/* Generate Mode Icons (5 Icons) */}
+                        {(mode === 'PROMPT') && (
                         <>
                           {/* Left Group */}
                           <div className="flex items-center gap-2 md:gap-4">
@@ -1119,6 +1130,7 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
                         </button>
                       )}
                   </div>
+                  )}
 
                   {/* Redundant menus removed */}
                 </div>

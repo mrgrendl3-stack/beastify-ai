@@ -112,39 +112,55 @@ export const checkProAccess = async (): Promise<boolean> => {
     return false;
 };
 
-const wrapGeminiCall = async <T>(fn: () => Promise<T>, timeoutMs = 120000): Promise<T> => {
-    try {
-        const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error(`Request timed out after ${timeoutMs / 1000} seconds`)), timeoutMs);
-        });
-        return await Promise.race([fn(), timeoutPromise]);
-    } catch (error: any) {
-        console.error("Gemini API Error:", error);
-        let errorMsg = "";
-        if (typeof error === 'string') {
-            errorMsg = error;
-        } else if (error instanceof Error) {
-            errorMsg = error.message;
-        } else if (error && typeof error === 'object') {
-            try {
-                errorMsg = JSON.stringify(error);
-            } catch (e) {
+const wrapGeminiCall = async <T>(fn: () => Promise<T>, timeoutMs = 120000, maxRetries = 2): Promise<T> => {
+    let attempt = 0;
+    while (attempt <= maxRetries) {
+        try {
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error(`Request timed out after ${timeoutMs / 1000} seconds`)), timeoutMs);
+            });
+            return await Promise.race([fn(), timeoutPromise]);
+        } catch (error: any) {
+            attempt++;
+            console.error(`Gemini API Error (Attempt ${attempt}/${maxRetries + 1}):`, error);
+            
+            let errorMsg = "";
+            if (typeof error === 'string') {
+                errorMsg = error;
+            } else if (error instanceof Error) {
+                errorMsg = error.message;
+            } else if (error && typeof error === 'object') {
+                try {
+                    errorMsg = JSON.stringify(error);
+                } catch (e) {
+                    errorMsg = String(error);
+                }
+            } else {
                 errorMsg = String(error);
             }
-        } else {
-            errorMsg = String(error);
-        }
 
-        if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("403") || errorMsg.includes("permission") || errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
-            if (window.aistudio) {
-                window.aistudio.openSelectKey();
+            const isTimeoutOr503 = errorMsg.includes('timed out') || errorMsg.includes('503') || errorMsg.includes('Deadline expired');
+            const isQuota = errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED");
+
+            if (attempt <= maxRetries && (isTimeoutOr503 || isQuota)) {
+                const delay = isQuota ? 5000 : Math.pow(2, attempt) * 1000; // Wait longer for quota
+                console.log(`Retrying in ${delay/1000}s due to ${isQuota ? 'Quota/Rate Limit' : 'Timeout'}...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                continue;
             }
+
+            if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("403") || errorMsg.includes("permission") || isQuota) {
+                if (window.aistudio) {
+                    window.aistudio.openSelectKey();
+                }
+            }
+            if (isQuota) {
+                throw new Error("API Quota Exceeded. You have reached the rate limit for this API key. Please select a different API key or wait a few minutes before trying again.");
+            }
+            throw new Error(`AI Error: ${errorMsg || "Failed to communicate with AI"}`);
         }
-        if (errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
-            throw new Error("API Quota Exceeded. You have reached the rate limit for this API key. Please select a different API key or wait a few minutes before trying again.");
-        }
-        throw new Error(`AI Error: ${errorMsg || "Failed to communicate with AI"}`);
     }
+    throw new Error("Max retries reached.");
 };
 
 export const blobToBase64 = (blob: Blob): Promise<string> => {

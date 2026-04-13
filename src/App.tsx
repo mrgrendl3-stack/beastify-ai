@@ -904,68 +904,6 @@ const App: React.FC = () => {
                 />
             )}
 
-            {optimizationResult && (
-                <div className="max-w-4xl mx-auto space-y-8 animate-fade-in relative">
-                    <button 
-                        onClick={() => { setOptimizationResult(null); setShowAnalysis(true); }}
-                        className="absolute -top-4 -right-4 z-50 p-2 bg-gray-900 border border-gray-800 rounded-full hover:bg-gray-800 transition-colors shadow-xl"
-                    >
-                        <XMarkIcon className="w-5 h-5 text-gray-400" />
-                    </button>
-                    
-                    <div className="glass-panel rounded-3xl p-8 border border-emerald-500/20 flex flex-col items-center relative overflow-hidden">
-                        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent pointer-events-none"></div>
-                        
-                        {/* 1. Score */}
-                        <div className="mb-8 cursor-pointer group relative z-10" onClick={() => setShowOptimizationDetailsModal(true)}>
-                            <div className={`px-10 py-8 rounded-[2.5rem] border ${getPredictionScore(optimizationResult.newScore).borderColor} flex flex-col items-center ${getPredictionScore(optimizationResult.newScore).shadowColor} relative backdrop-blur-xl bg-black/40 transition-transform group-hover:scale-105`}>
-                                <AnimatedScore targetScore={optimizationResult.newScore} variant="circular" size={180} />
-                                <span className={`text-sm font-bold uppercase tracking-widest mt-6 opacity-80 ${getPredictionScore(optimizationResult.newScore).color}`}>{getPredictionScore(optimizationResult.newScore).label}</span>
-                            </div>
-                            <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-gray-900 text-emerald-400 text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-gray-800 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg">
-                                Click for detailed analysis
-                            </div>
-                        </div>
-
-                        {/* 2. Thumbnail */}
-                        <div className="w-full max-w-3xl aspect-video rounded-3xl overflow-hidden border border-emerald-500/30 mb-6 shadow-2xl relative group z-10">
-                            <img src={`data:image/png;base64,${optimizationResult.optimizedImageBase64}`} className="w-full h-full object-cover" />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-6">
-                                <span className="text-emerald-400 font-bold uppercase tracking-widest text-sm flex items-center gap-2">
-                                    <SparklesIcon className="w-4 h-4" /> Optimized Image
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* 3. Title */}
-                        <div className="w-full max-w-3xl bg-black/40 p-5 rounded-2xl border border-emerald-500/20 mb-10 text-center z-10">
-                            <p className="text-emerald-500/80 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Suggested Title</p>
-                            <p className="text-2xl font-bold text-white">{optimizationResult.optimizedTitle}</p>
-                        </div>
-
-                        {/* 4. Pillars */}
-                        <div className="w-full max-w-3xl flex flex-col gap-4 mb-10 bg-[#0a0a0a] p-8 rounded-[2rem] border border-gray-800/50 shadow-xl z-10">
-                            <h3 className="text-sm font-black text-emerald-400 uppercase tracking-widest mb-2 text-center">New Diagnostic Breakdown</h3>
-                            {optimizationResult.newPillars.map((pillar, idx) => (
-                                <PillarRow key={idx} pillar={pillar} />
-                            ))}
-                        </div>
-
-                        {/* 5. Optimize CTR button (TRY AGAIN if < 90) */}
-                        {optimizationResult.newScore < 90 && (
-                            <div className="w-full max-w-3xl z-10">
-                                <button 
-                                    onClick={() => handleOneClickFix()}
-                                    className="w-full py-6 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-black text-xl rounded-2xl shadow-[0_0_40px_rgba(168,85,247,0.2)] transition-all flex items-center justify-center gap-3 active:scale-95 group"
-                                >
-                                    <RefreshIcon className="w-6 h-6 group-hover:animate-spin" /> TRY AGAIN (20 CREDITS)
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-
             {/* OPTIMIZATION DETAILS MODAL */}
             {showOptimizationDetailsModal && optimizationResult && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-xl p-4 animate-fade-in">
@@ -1073,15 +1011,8 @@ const App: React.FC = () => {
                 </div>
             )}
 
-            {currentAnalysisResult && showAnalysis && !optimizationResult && (
+            {currentAnalysisResult && showAnalysis && (
                 <div className="max-w-4xl mx-auto space-y-8 animate-fade-in relative">
-                    <button 
-                        onClick={() => setShowAnalysis(false)}
-                        className="absolute -top-4 -right-4 z-50 p-2 bg-gray-900 border border-gray-800 rounded-full hover:bg-gray-800 transition-colors shadow-xl"
-                    >
-                        <XMarkIcon className="w-5 h-5 text-gray-400" />
-                    </button>
-                    
                     <div className="glass-panel rounded-3xl p-8 border border-cyan-500/20 flex flex-col items-center">
                         {/* 1. Score */}
                         <div className="mb-8 cursor-pointer group relative" onClick={() => setCtrModalImage(currentImages[0])}>
@@ -1097,16 +1028,33 @@ const App: React.FC = () => {
                         {/* 2. Thumbnail */}
                         <div className="w-full max-w-3xl aspect-video rounded-3xl overflow-hidden border border-gray-800/60 mb-6 shadow-2xl relative group">
                             <img src={analyzedImagePreview || ''} className="w-full h-full object-cover" />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-6">
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-between p-6">
                                 <span className="text-white font-bold uppercase tracking-widest text-sm">Original Image</span>
+                                <button 
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        const link = document.createElement('a');
+                                        link.href = analyzedImagePreview || '';
+                                        link.download = 'original_thumbnail.png';
+                                        link.click();
+                                    }}
+                                    className="p-3 bg-black/50 hover:bg-black/80 rounded-full backdrop-blur-sm border border-white/20 text-white transition-all"
+                                    title="Download Image"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                                    </svg>
+                                </button>
                             </div>
                         </div>
 
                         {/* 3. Title */}
-                        <div className="w-full max-w-3xl bg-black/40 p-5 rounded-2xl border border-gray-800/60 mb-10 text-center">
-                            <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Video Title</p>
-                            <p className="text-2xl font-bold text-white">{inputStatesByMode['ANALYZE']?.prompt || "Untitled"}</p>
-                        </div>
+                        {inputStatesByMode['ANALYZE']?.prompt && (
+                            <div className="w-full max-w-3xl bg-black/40 p-5 rounded-2xl border border-gray-800/60 mb-10 text-center">
+                                <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Video Title</p>
+                                <p className="text-2xl font-bold text-white">{inputStatesByMode['ANALYZE']?.prompt}</p>
+                            </div>
+                        )}
 
                         {/* 4. Pillars */}
                         <div className="w-full max-w-3xl flex flex-col gap-4 mb-10 bg-[#0a0a0a] p-8 rounded-[2rem] border border-gray-800/50 shadow-xl">
@@ -1126,6 +1074,75 @@ const App: React.FC = () => {
                                 <SparklesIcon className="w-6 h-6 group-hover:animate-pulse" /> 1-VIRAL FIX
                             </button>
                         </div>
+                        
+                        {/* Optimization Result Below Button */}
+                        {optimizationResult && (
+                            <div className="w-full max-w-3xl mt-12 pt-12 border-t border-gray-800/50 flex flex-col items-center relative animate-fade-in">
+                                <button 
+                                    onClick={() => setOptimizationResult(null)}
+                                    className="absolute top-8 right-0 z-50 p-2 bg-gray-900 border border-gray-800 rounded-full hover:bg-gray-800 transition-colors shadow-xl"
+                                >
+                                    <XMarkIcon className="w-5 h-5 text-gray-400" />
+                                </button>
+                                
+                                <div className="mb-8 cursor-pointer group relative z-10" onClick={() => setShowOptimizationDetailsModal(true)}>
+                                    <div className={`px-10 py-8 rounded-[2.5rem] border ${getPredictionScore(optimizationResult.newScore).borderColor} flex flex-col items-center ${getPredictionScore(optimizationResult.newScore).shadowColor} relative backdrop-blur-xl bg-black/40 transition-transform group-hover:scale-105`}>
+                                        <AnimatedScore targetScore={optimizationResult.newScore} variant="circular" size={180} />
+                                        <span className={`text-sm font-bold uppercase tracking-widest mt-6 opacity-80 ${getPredictionScore(optimizationResult.newScore).color}`}>{getPredictionScore(optimizationResult.newScore).label}</span>
+                                    </div>
+                                    <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-gray-900 text-emerald-400 text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-gray-800 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg">
+                                        Click for detailed analysis
+                                    </div>
+                                </div>
+
+                                <div className="w-full aspect-video rounded-3xl overflow-hidden border border-emerald-500/30 mb-6 shadow-2xl relative group z-10">
+                                    <img src={`data:image/png;base64,${optimizationResult.optimizedImageBase64}`} className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-between p-6">
+                                        <span className="text-emerald-400 font-bold uppercase tracking-widest text-sm flex items-center gap-2">
+                                            <SparklesIcon className="w-4 h-4" /> Optimized Image
+                                        </span>
+                                        <button 
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                const link = document.createElement('a');
+                                                link.href = `data:image/png;base64,${optimizationResult.optimizedImageBase64}`;
+                                                link.download = 'optimized_thumbnail.png';
+                                                link.click();
+                                            }}
+                                            className="p-3 bg-black/50 hover:bg-black/80 rounded-full backdrop-blur-sm border border-white/20 text-white transition-all"
+                                            title="Download Image"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="w-full bg-black/40 p-5 rounded-2xl border border-emerald-500/20 mb-10 text-center z-10">
+                                    <p className="text-emerald-500/80 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Suggested Title</p>
+                                    <p className="text-2xl font-bold text-white">{optimizationResult.optimizedTitle}</p>
+                                </div>
+
+                                <div className="w-full flex flex-col gap-4 mb-10 bg-[#0a0a0a] p-8 rounded-[2rem] border border-gray-800/50 shadow-xl z-10">
+                                    <h3 className="text-sm font-black text-emerald-400 uppercase tracking-widest mb-2 text-center">New Diagnostic Breakdown</h3>
+                                    {optimizationResult.newPillars.map((pillar, idx) => (
+                                        <PillarRow key={idx} pillar={pillar} />
+                                    ))}
+                                </div>
+
+                                {optimizationResult.newScore < 90 && (
+                                    <div className="w-full z-10">
+                                        <button 
+                                            onClick={() => handleOneClickFix()}
+                                            className="w-full py-6 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-black text-xl rounded-2xl shadow-[0_0_40px_rgba(168,85,247,0.2)] transition-all flex items-center justify-center gap-3 active:scale-95 group"
+                                        >
+                                            <RefreshIcon className="w-6 h-6 group-hover:animate-spin" /> TRY AGAIN (20 CREDITS)
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
