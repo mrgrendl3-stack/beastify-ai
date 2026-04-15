@@ -35,23 +35,23 @@ const FAMOUS_YOUTUBERS = [
     { name: 'PewDiePie', tag: 'YOUTUBER', image: 'https://unavatar.io/youtube/PewDiePie' },
     { name: 'KSI', tag: 'YOUTUBER', image: 'https://unavatar.io/youtube/KSI' },
     { name: 'MKBHD', tag: 'YOUTUBER', image: 'https://unavatar.io/youtube/mkbhd' },
-    { name: 'Elon Musk', tag: 'TECH', image: 'https://unavatar.io/twitter/elonmusk' },
-    { name: 'Mark Zuckerberg', tag: 'TECH', image: 'https://unavatar.io/twitter/finkd' },
+    { name: 'Elon Musk', tag: 'TECH', image: 'https://unavatar.io/tesla.com' },
+    { name: 'Mark Zuckerberg', tag: 'TECH', image: 'https://unavatar.io/meta.com' },
     { name: 'MrBeast', tag: 'YOUTUBER', image: 'https://unavatar.io/youtube/MrBeast' },
-    { name: 'Jeff Bezos', tag: 'TECH', image: 'https://unavatar.io/twitter/JeffBezos' },
-    { name: 'Bill Gates', tag: 'TECH', image: 'https://unavatar.io/twitter/BillGates' },
-    { name: 'Ronaldo', tag: 'SPORTS', image: 'https://unavatar.io/twitter/Cristiano' },
+    { name: 'Jeff Bezos', tag: 'TECH', image: 'https://unavatar.io/amazon.com' },
+    { name: 'Bill Gates', tag: 'TECH', image: 'https://unavatar.io/microsoft.com' },
+    { name: 'Ronaldo', tag: 'SPORTS', image: 'https://unavatar.io/youtube/CristianoRonaldo' },
     { name: 'Markiplier', tag: 'YOUTUBER', image: 'https://unavatar.io/youtube/markiplier' },
     { name: 'Jacksepticeye', tag: 'YOUTUBER', image: 'https://unavatar.io/youtube/jacksepticeye' },
     { name: 'Logan Paul', tag: 'YOUTUBER', image: 'https://unavatar.io/youtube/LoganPaulVlogs' },
     { name: 'Ryan Trahan', tag: 'YOUTUBER', image: 'https://unavatar.io/youtube/ryantrahan' },
     { name: 'IShowSpeed', tag: 'YOUTUBER', image: 'https://unavatar.io/youtube/IShowSpeed' },
-    { name: 'Lionel Messi', tag: 'SPORTS', image: 'https://unavatar.io/twitter/TeamMessi' },
+    { name: 'Lionel Messi', tag: 'SPORTS', image: 'https://unavatar.io/youtube/LeoMessi' },
     { name: 'Taylor Swift', tag: 'MUSIC', image: 'https://unavatar.io/youtube/TaylorSwift' },
     { name: 'Joe Rogan', tag: 'PODCAST', image: 'https://unavatar.io/youtube/joerogan' },
     { name: 'Gordon Ramsay', tag: 'CHEF', image: 'https://unavatar.io/youtube/gordonramsay' },
     { name: 'Will Smith', tag: 'ACTOR', image: 'https://unavatar.io/youtube/WillSmith' },
-    { name: 'Dwayne Johnson', tag: 'ACTOR', image: 'https://unavatar.io/twitter/TheRock' }
+    { name: 'Dwayne Johnson', tag: 'ACTOR', image: 'https://unavatar.io/youtube/therock' }
 ];
 
 const CHANNEL_CATEGORIES = [

@@ -1050,9 +1050,9 @@ const App: React.FC = () => {
 
                         {/* 3. Title */}
                         {inputStatesByMode['ANALYZE']?.prompt && (
-                            <div className="w-full max-w-3xl bg-black/40 p-5 rounded-2xl border border-gray-800/60 mb-10 text-center">
-                                <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Video Title</p>
-                                <p className="text-2xl font-bold text-white">{inputStatesByMode['ANALYZE']?.prompt}</p>
+                            <div className="w-full max-w-xl bg-black/40 p-4 rounded-xl border border-gray-800/60 mb-8 text-center">
+                                <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.2em] mb-1">Video Title</p>
+                                <p className="text-lg font-bold text-white">{inputStatesByMode['ANALYZE']?.prompt}</p>
                             </div>
                         )}
 
@@ -1065,15 +1065,17 @@ const App: React.FC = () => {
                         </div>
 
                         {/* 5. Optimize CTR button */}
-                        <div className="w-full max-w-3xl">
-                            <button 
-                                onClick={() => handleOneClickFix()}
-                                disabled={!analyzedImagePreview}
-                                className="w-full py-6 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-black text-xl rounded-2xl shadow-[0_0_40px_rgba(37,99,235,0.3)] transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed group"
-                            >
-                                <SparklesIcon className="w-6 h-6 group-hover:animate-pulse" /> 1-VIRAL FIX
-                            </button>
-                        </div>
+                        {(!currentAnalysisResult || currentAnalysisResult.ctr_score < 85) && (
+                            <div className="w-full max-w-3xl">
+                                <button 
+                                    onClick={() => handleOneClickFix()}
+                                    disabled={!analyzedImagePreview}
+                                    className="w-full py-6 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-black text-xl rounded-2xl shadow-[0_0_40px_rgba(37,99,235,0.3)] transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed group"
+                                >
+                                    <SparklesIcon className="w-6 h-6 group-hover:animate-pulse" /> 1-VIRAL FIX
+                                </button>
+                            </div>
+                        )}
                         
                         {/* Optimization Result Below Button */}
                         {optimizationResult && (

@@ -240,8 +240,12 @@ export const urlToBase64 = async (url: string, timeoutMs = 15000): Promise<strin
                         const proxyUrl3 = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`;
                         return await fetchWithTimeout(proxyUrl3);
                     } catch (e5) {
-                        const proxyUrl4 = `https://wsrv.nl/?url=${encodeURIComponent(url)}`;
-                        return await fetchWithTimeout(proxyUrl4);
+                        try {
+                            const proxyUrl4 = `https://wsrv.nl/?url=${encodeURIComponent(url)}`;
+                            return await fetchWithTimeout(proxyUrl4);
+                        } catch (e6) {
+                            throw new Error(`Failed to load image from URL: ${url}. The image might be private, deleted, or blocking our servers. Please try uploading the image directly from your device.`);
+                        }
                     }
                 }
             }

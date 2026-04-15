@@ -1,5 +1,11 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { SquareIcon, BrushIcon, EraserIcon, PaintBucketIcon, PaletteIcon, UndoIcon, RedoIcon, TrashIcon, LassoSelect, Wand2, MaximizeIcon } from 'lucide-react';
+import { SquareIcon, BrushIcon, EraserIcon, PaintBucketIcon, PaletteIcon, UndoIcon, RedoIcon, TrashIcon, LassoSelect, Wand2, MaximizeIcon, XIcon as XMarkIcon } from 'lucide-react';
+
+const CurveIcon = (props: any) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M5 19c3.5-5 5-14 14-14" />
+  </svg>
+);
 
 interface CanvasEditorProps {
   imageUrl: string;
@@ -351,21 +357,10 @@ export default function CanvasEditor({ imageUrl, onMaskChange, onChangeImage }: 
     <div className="flex flex-row items-center justify-center gap-2 md:gap-4 w-full select-none">
       {/* Left Icons */}
       <div className="flex flex-col gap-2 order-1 relative">
-        <ToolButton icon={SquareIcon} active={tool === 'rectangle'} onClick={() => { setTool('rectangle'); setShowEraserSlider(false); setShowBrushSlider(false); setShowWandSlider(false); setShowColorPicker(false); }} title="Rectangle Select" />
-        <ToolButton icon={LassoSelect} active={tool === 'lasso'} onClick={() => { setTool('lasso'); setShowEraserSlider(false); setShowBrushSlider(false); setShowWandSlider(false); setShowColorPicker(false); }} title="Lasso Select" />
+        <ToolButton icon={SquareIcon} active={tool === 'rectangle'} onClick={() => { setTool('rectangle'); setShowEraserSlider(false); setShowBrushSlider(false); setShowColorPicker(false); }} title="Rectangle Select" />
         
         <div className="relative">
-          <ToolButton icon={Wand2} active={tool === 'magic-wand'} onClick={() => { setTool('magic-wand'); setShowWandSlider(!showWandSlider); setShowEraserSlider(false); setShowBrushSlider(false); setShowColorPicker(false); }} title="Magic Wand (Select Similar)" />
-          {showWandSlider && (
-            <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-800 p-3 rounded-xl border border-gray-700 flex flex-col gap-2 z-10 w-32">
-              <span className="text-[10px] text-gray-400 uppercase tracking-wider">Tolerance</span>
-              <input type="range" min="1" max="100" value={wandTolerance} onChange={(e) => setWandTolerance(Number(e.target.value))} className="w-full accent-emerald-500" />
-            </div>
-          )}
-        </div>
-
-        <div className="relative">
-          <ToolButton icon={BrushIcon} active={tool === 'brush'} onClick={() => { setTool('brush'); setShowBrushSlider(!showBrushSlider); setShowEraserSlider(false); setShowWandSlider(false); setShowColorPicker(false); }} title="Brush" />
+          <ToolButton icon={BrushIcon} active={tool === 'brush'} onClick={() => { setTool('brush'); setShowBrushSlider(!showBrushSlider); setShowEraserSlider(false); setShowColorPicker(false); }} title="Brush" />
           {showBrushSlider && (
             <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-800 p-3 rounded-xl border border-gray-700 flex flex-col gap-2 z-10 w-32">
               <span className="text-[10px] text-gray-400 uppercase tracking-wider">Brush Size</span>
@@ -374,10 +369,10 @@ export default function CanvasEditor({ imageUrl, onMaskChange, onChangeImage }: 
           )}
         </div>
 
-        <ToolButton icon={PaintBucketIcon} active={tool === 'fill'} onClick={() => { setTool('fill'); setShowEraserSlider(false); setShowBrushSlider(false); setShowWandSlider(false); setShowColorPicker(false); }} title="Fill Canvas" />
+        <ToolButton icon={PaintBucketIcon} active={tool === 'fill'} onClick={() => { setTool('fill'); setShowEraserSlider(false); setShowBrushSlider(false); setShowColorPicker(false); }} title="Fill Canvas" />
         
         <div className="relative">
-          <ToolButton icon={EraserIcon} active={tool === 'eraser'} onClick={() => { setTool('eraser'); setShowEraserSlider(!showEraserSlider); setShowBrushSlider(false); setShowWandSlider(false); setShowColorPicker(false); }} title="Eraser" />
+          <ToolButton icon={EraserIcon} active={tool === 'eraser'} onClick={() => { setTool('eraser'); setShowEraserSlider(!showEraserSlider); setShowBrushSlider(false); setShowColorPicker(false); }} title="Eraser" />
           {showEraserSlider && (
             <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-800 p-3 rounded-xl border border-gray-700 flex flex-col gap-2 z-10 w-32">
               <span className="text-[10px] text-gray-400 uppercase tracking-wider">Eraser Size</span>
@@ -387,13 +382,15 @@ export default function CanvasEditor({ imageUrl, onMaskChange, onChangeImage }: 
         </div>
 
         <div className="relative">
-          <ToolButton icon={PaletteIcon} active={showColorPicker} onClick={() => { setShowColorPicker(!showColorPicker); setShowEraserSlider(false); setShowBrushSlider(false); setShowWandSlider(false); }} title="Color" />
+          <ToolButton icon={PaletteIcon} active={showColorPicker} onClick={() => { setShowColorPicker(!showColorPicker); setShowEraserSlider(false); setShowBrushSlider(false); }} title="Color" />
           {showColorPicker && (
             <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-gray-800 p-2 rounded-xl border border-gray-700 z-10">
               <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="w-8 h-8 rounded cursor-pointer bg-transparent border-none p-0" />
             </div>
           )}
         </div>
+        
+        <ToolButton icon={CurveIcon} active={false} onClick={() => {}} title="Curve" />
       </div>
 
       {/* Canvas Area */}
@@ -401,6 +398,13 @@ export default function CanvasEditor({ imageUrl, onMaskChange, onChangeImage }: 
         ref={containerRef}
         className="relative flex-1 w-full max-w-2xl aspect-video rounded-2xl overflow-hidden border border-gray-800 shadow-2xl order-2 group touch-none"
       >
+        <button 
+            onClick={(e) => { e.stopPropagation(); onChangeImage(); }}
+            className="absolute top-4 right-4 z-50 p-2 bg-gray-900/80 border border-gray-700 rounded-full hover:bg-gray-800 transition-colors shadow-xl"
+            title="Remove Image"
+        >
+            <XMarkIcon className="w-4 h-4 text-gray-400 hover:text-white" />
+        </button>
         <img 
           ref={imgRef}
           src={imageUrl} 
@@ -421,24 +425,10 @@ export default function CanvasEditor({ imageUrl, onMaskChange, onChangeImage }: 
           style={{ touchAction: 'none' }}
         />
         
-        {/* Change Image Overlay (only when not drawing and history is empty) */}
-        {historyStep <= 0 && !isDrawing && (
-          <div 
-            className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer pointer-events-none"
-          >
-             <button 
-                onClick={(e) => { e.stopPropagation(); onChangeImage(); }}
-                className="pointer-events-auto px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold tracking-widest uppercase backdrop-blur-md transition-colors"
-             >
-                Change Image
-             </button>
-          </div>
-        )}
       </div>
 
       {/* Right Icons */}
       <div className="flex flex-col gap-2 order-3">
-        <button onClick={selectAll} className="p-2 md:p-3 rounded-xl bg-gray-800/50 border border-gray-700 hover:bg-gray-700 transition-colors" title="Select All"><MaximizeIcon className="w-4 h-4 md:w-5 md:h-5 text-emerald-400" /></button>
         <button onClick={undo} disabled={historyStep <= 0} className="p-2 md:p-3 rounded-xl bg-gray-800/50 border border-gray-700 hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Undo"><UndoIcon className="w-4 h-4 md:w-5 md:h-5 text-gray-400" /></button>
         <button onClick={redo} disabled={historyStep >= history.length - 1} className="p-2 md:p-3 rounded-xl bg-gray-800/50 border border-gray-700 hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Redo"><RedoIcon className="w-4 h-4 md:w-5 md:h-5 text-gray-400" /></button>
         <button onClick={clear} disabled={historyStep <= 0} className="p-2 md:p-3 rounded-xl bg-gray-800/50 border border-gray-700 hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Clear"><TrashIcon className="w-4 h-4 md:w-5 md:h-5 text-red-400/70 hover:text-red-400" /></button>
