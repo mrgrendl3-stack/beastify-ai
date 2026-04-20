@@ -12,7 +12,7 @@ import {
     SettingsIcon, AdjustmentsIcon, RefreshIcon, SearchIcon, ClipboardIcon, PlusIcon, UserIcon, CheckIcon, BoxIcon
 } from './IconComponents';
 import { AppMode, AnalysisMode, ModeInputState } from '../types';
-import { enhancePrompt, editThumbnail, fileToBase64, urlToBase64, transcribeAudio, isObjectOnly } from '../services/geminiService';
+import { enhancePrompt, editThumbnail, fileToBase64, urlToBase64, transcribeAudio, isObjectOnly, validateUploadedObject } from '../services/geminiService';
 import { fetchSingleChannelStat, getVideoData } from '../services/youtubeService';
 
 import { User } from 'firebase/auth';
@@ -21,7 +21,7 @@ import { getCustomPersonas, getCustomStyles, saveCustomPersona, saveCustomStyle,
 interface InputSectionProps {
   mode: AppMode;
   setMode: (mode: AppMode) => void;
-  onGenerate: (prompt: string, imageFile: File | null, imageUrl: string | null, faceFile?: File, analysisMode?: AnalysisMode, language?: string, maskData?: string, useInspiration?: boolean, isLowRes?: boolean, inspirationFiles?: File[], faceUrl?: string | string[], generationCount?: number) => void;
+  onGenerate: (prompt: string, imageFile: File | null, imageUrl: string | null, faceFile?: File, analysisMode?: AnalysisMode, language?: string, maskData?: string, useInspiration?: boolean, isLowRes?: boolean, inspirationFiles?: File[], faceUrl?: string | string[], generationCount?: number, styleVector?: any, personaEmbedding?: any) => void;
   isLoading: boolean;
   lastGeneratedImage?: string;
   predictedCtr?: number;
@@ -115,13 +115,35 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
   const [preview, setPreview] = useState<string | null>(inputState?.preview || null);
   const [ratioError, setRatioError] = useState<string | null>(null);
   const [showCountMenu, setShowCountMenu] = useState(false);
-  const [generationCount, setGenerationCount] = useState(1);
+  const [generationCount, setGenerationCount] = useState(2);
+
+  // Sync internal state with inputState when mode changes
+  useEffect(() => {
+    if (inputState) {
+        setPrompt(inputState.prompt || '');
+        setImageFile(inputState.imageFile || null);
+        setImageUrl(inputState.imageUrl || '');
+        setInputType(inputState.inputType || 'UPLOAD');
+        setPreview(inputState.preview || null);
+        setSelectedPersona(inputState.selectedPersona || null);
+        
+        // Also sync customFace parameters to support edits
+        setCustomFaceFile(inputState.customFaceFile || null);
+        setCustomFacePreview(inputState.customFacePreview || null);
+    } else {
+        setPrompt('');
+        setImageFile(null);
+        setImageUrl('');
+        setPreview(null);
+        setSelectedPersona(null);
+    }
+  }, [mode, inputState]); // Sync when mode changes or inputState force updates
 
   useEffect(() => {
       if (mode === 'TITLE') {
           if (![3, 6].includes(generationCount)) setGenerationCount(3);
       } else {
-          if (![1, 2, 4].includes(generationCount)) setGenerationCount(1);
+          if (![1, 2, 4].includes(generationCount)) setGenerationCount(2);
       }
   }, [mode, generationCount]);
 
@@ -178,7 +200,7 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
     const persona = FAMOUS_YOUTUBERS.find(p => p.name === selectedPersona);
     if (persona) return persona.image;
     const custom = customCharacters.find(c => c.name === selectedPersona);
-    if (custom) return custom.images[0];
+    if (custom) return custom.images?.[0] || custom.avatar || null;
     return null;
   };
 
@@ -266,11 +288,16 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
   const [inspirationPreviews, setInspirationPreviews] = useState<string[]>(inputState.inspirationPreviews || []);
   const [objectFile, setObjectFile] = useState<File | null>(null);
   const [objectPreview, setObjectPreview] = useState<string | null>(null);
+  const [objectDescription, setObjectDescription] = useState<string | null>(null);
   const [isAnalyzingObject, setIsAnalyzingObject] = useState(false);
   const [showObjectSuccess, setShowObjectSuccess] = useState(false);
   const objectInputRef = useRef<HTMLInputElement>(null);
+  const navContainerRef = useRef<HTMLDivElement>(null);
 
-  // Removed mode sync useEffect as we now use key={mode} in App.tsx to remount component
+  // Scroll active tab into view on mount
+  useEffect(() => {
+      // User request: Don't animate/scroll the nav container when changing tabs.
+  }, [mode]);
 
   // Update parent state whenever internal state changes
   useEffect(() => {
@@ -318,6 +345,7 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [recordingTimeLeft, setRecordingTimeLeft] = useState<number | null>(null);
+  const [recordingError, setRecordingError] = useState<string | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inspirationInputRef = useRef<HTMLInputElement>(null);
@@ -331,7 +359,12 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
 
   const startRecording = async () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert("Your browser does not support audio recording or is blocking it in this context.");
+        let msg = "Your browser does not support audio recording or it is blocked.";
+        if (window.self !== window.top) {
+            msg += " Try opening the app in a new tab.";
+        }
+        setRecordingError(msg);
+        setTimeout(() => setRecordingError(null), 8000);
         return;
     }
     try {
@@ -355,7 +388,8 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
                 }
             } catch (e) {
                 console.error("Transcription failed", e);
-                alert("Transcription failed. Please try again.");
+                setRecordingError("Transcription failed. Please try again.");
+                setTimeout(() => setRecordingError(null), 8000);
             } finally {
                 setIsTranscribing(false);
             }
@@ -385,13 +419,19 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
 
     } catch (err: any) {
         console.error("Error accessing microphone", err);
-        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-            alert("Microphone access denied. Please allow microphone permissions in your browser settings for this site.");
-        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-            alert("No microphone found. Please connect a microphone and try again.");
+        let errorMsg = "Microphone access denied. Please check your browser permissions.";
+        if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+            errorMsg = "No microphone found. Please connect a microphone and try again.";
         } else {
-            alert("Could not access microphone: " + (err.message || "Unknown error"));
+            errorMsg = "Could not access microphone: " + (err.message || "Unknown error");
         }
+        
+        if (window.self !== window.top) {
+            errorMsg += " Note: Microphone access may be blocked inside this preview frame. Try opening the app in a new tab.";
+        }
+        
+        setRecordingError(errorMsg);
+        setTimeout(() => setRecordingError(null), 8000);
     }
   };
 
@@ -500,6 +540,19 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
     if (file) {
         setIsAnalyzingObject(true);
         try {
+            const base64 = await fileToBase64(file);
+            const validation = await validateUploadedObject(base64, file.type);
+            
+            if (!validation.isValid) {
+                alert(validation.error || "Image rejected. Characters and faces are not allowed here.");
+                if (objectInputRef.current) objectInputRef.current.value = '';
+                setObjectFile(null);
+                setObjectPreview(null);
+                setObjectDescription(null);
+                return;
+            }
+
+            setObjectDescription(validation.description);
             setObjectFile(file);
             setObjectPreview(URL.createObjectURL(file));
             setShowObjectSuccess(true);
@@ -544,10 +597,15 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
         }
     }
 
+    if (objectFile && objectDescription) {
+        finalPrompt = `[INTEGRATE OBJECT: I have provided a reference object describing "${objectDescription}". You MUST integrate this object seamlessly into the thumbnail. Remove its original background entirely, and place the object naturally within the scene so it looks professional and part of the composition.] ${finalPrompt}`;
+    }
+
     const sourceImage = inputType === 'UPLOAD' ? preview : (youtubeUrl ? youtubeUrl : null);
 
     let faceUrl = undefined;
     let customFaceImages: string[] | undefined = undefined;
+    let personaEmbeddingToPass = undefined;
     if (selectedPersona) {
         const persona = FAMOUS_YOUTUBERS.find(p => p.name === selectedPersona);
         if (persona) {
@@ -556,8 +614,17 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
             const custom = customCharacters.find(c => c.name === selectedPersona);
             if (custom) {
                 customFaceImages = custom.images;
-                faceUrl = custom.images[0]; // Use first image as main faceUrl for now
+                faceUrl = custom.images?.[0]; // Fallback if no avatar
+                personaEmbeddingToPass = custom.embedding;
             }
+        }
+    }
+
+    let styleVectorToPass = undefined;
+    if (selectedStyle) {
+        const custom = customStyles.find(s => s.name === selectedStyle);
+        if (custom) {
+            styleVectorToPass = custom.style_vector;
         }
     }
 
@@ -573,7 +640,9 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
         isLowRes, 
         [...inspirationFiles, ...(objectFile ? [objectFile] : [])],
         customFaceImages || faceUrl,
-        generationCount
+        generationCount,
+        styleVectorToPass,
+        personaEmbeddingToPass
     );
   };
 
@@ -604,8 +673,9 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
   const navItems = [
     { id: 'PROMPT', icon: SparklesIcon, label: 'Generate', color: 'text-cyan-400' },
     { id: 'RECREATE', icon: RefreshIcon, label: 'Recreate', color: 'text-gray-400' },
-    { id: 'MASTER_TITLES', icon: TextIcon, label: 'Title', color: 'text-gray-400' },
     { id: 'ANALYZE', icon: EyeIcon, label: 'Analyze', color: 'text-gray-400' },
+    { id: 'EDIT', icon: BrushIcon, label: 'Edit', color: 'text-emerald-400' },
+    { id: 'MASTER_TITLES', icon: TextIcon, label: 'Title', color: 'text-gray-400' },
   ];
 
   const brandGradient = "bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600";
@@ -638,35 +708,19 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
       <div className="relative bg-[#0a0a0a] border border-gray-800/50 rounded-[2.5rem] p-8 shadow-2xl min-h-[500px] flex flex-col">
           <div className="space-y-8 flex-1">
             {/* Navigation Tabs - Horizontal layout with icon next to text */}
-            <div className="flex items-center justify-start md:justify-center gap-2 md:gap-4 overflow-x-auto no-scrollbar py-2 px-2 border-b border-gray-800/30 pb-6">
-                {navItems.map((item, index) => (
-                <React.Fragment key={item.id}>
-                    <button 
-                    onClick={() => setMode(item.id as AppMode)} 
-                    className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-500 border ${mode === item.id ? 'bg-gradient-to-r from-cyan-500/20 via-blue-500/20 to-purple-600/20 border-cyan-500/50 text-white' : 'text-gray-500 border-transparent hover:text-gray-300'}`}
-                    >
-                    <div className={`p-2.5 rounded-xl border transition-all liquid-glass-icon ${mode === item.id ? 'border-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 shadow-[0_0_15px_rgba(6,182,212,0.5)]' : 'border-cyan-500/10 bg-gray-800/30'}`}>
-                        <item.icon className={`w-4 h-4 ${mode === item.id ? 'text-white' : 'text-current'}`} />
-                    </div>
-                    <span className={`text-[10px] font-black tracking-widest uppercase whitespace-nowrap ${mode === item.id ? 'text-white' : ''}`}>{item.label}</span>
-                    </button>
-                    
-                    {/* Insert EDIT after the first item (Generate) */}
-                    {index === 0 && (
-                    <div className="flex items-center gap-2 md:gap-4">
-                        <button 
-                        onClick={() => setMode('EDIT')} 
-                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-700 border ${mode === 'EDIT' ? 'bg-white/5 border-emerald-500/50 text-emerald-400' : 'text-emerald-500/40 border-transparent hover:text-emerald-400'}`}
-                        >
-                        <div className={`p-2.5 rounded-xl border transition-all liquid-glass-icon ${mode === 'EDIT' ? 'border-emerald-400 bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)]' : 'border-emerald-500/20'}`}>
-                            <BrushIcon className={`w-4 h-4 ${mode === 'EDIT' ? 'text-white' : 'text-current'}`} />
-                        </div>
-                        <span className={`text-[10px] font-black tracking-widest uppercase whitespace-nowrap ${mode === 'EDIT' ? 'text-white' : ''}`}>EDIT</span>
-                        </button>
-                        <div className="w-px h-8 bg-gray-800/50" />
-                    </div>
-                    )}
-                </React.Fragment>
+            <div ref={navContainerRef} className="flex items-center justify-start md:justify-center gap-2 md:gap-4 overflow-x-auto no-scrollbar py-2 px-2 border-b border-gray-800/30 pb-6">
+                {navItems.map((item) => (
+                <button 
+                onClick={() => setMode(item.id as AppMode)} 
+                key={item.id}
+                data-active={mode === item.id}
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-500 border ${mode === item.id ? (item.id === 'EDIT' ? 'bg-white/5 border-emerald-500/50 text-emerald-400' : 'bg-gradient-to-r from-cyan-500/20 via-blue-500/20 to-purple-600/20 border-cyan-500/50 text-white') : 'text-gray-500 border-transparent hover:text-gray-300'}`}
+                >
+                <div className={`p-2.5 rounded-xl border transition-all liquid-glass-icon ${mode === item.id ? (item.id === 'EDIT' ? 'border-emerald-400 bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)]' : 'border-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 shadow-[0_0_15px_rgba(6,182,212,0.5)]') : 'border-cyan-500/10 bg-gray-800/30'}`}>
+                    <item.icon className={`w-4 h-4 ${mode === item.id ? 'text-white' : 'text-current'}`} />
+                </div>
+                <span className={`text-[10px] font-black tracking-widest uppercase whitespace-nowrap ${mode === item.id ? 'text-white' : ''}`}>{item.label}</span>
+                </button>
                 ))}
             </div>
 
@@ -697,13 +751,10 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
                         imageUrl={inputType === 'UPLOAD' ? preview! : (getYouTubeId(youtubeUrl) ? `https://img.youtube.com/vi/${getYouTubeId(youtubeUrl)}/maxresdefault.jpg` : youtubeUrl)}
                         onMaskChange={setMaskData}
                         onChangeImage={() => {
-                            if (inputType === 'UPLOAD') {
-                                fileInputRef.current?.click();
-                            } else {
-                                setYoutubeUrl('');
-                                setImageUrl('');
-                                setPreview(null);
-                            }
+                            setPreview(null);
+                            setImageUrl('');
+                            setYoutubeUrl('');
+                            setMaskData(null);
                         }}
                       />
 
@@ -969,6 +1020,11 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
             {((mode === 'PROMPT' || mode === 'MAGIC_FIX' || mode === 'UPSCALE' || mode === 'MASTER_TITLES' || mode === 'OPTIMIZE') || 
               (mode === 'ANALYZE' && inputType !== 'URL' && analysisMode !== 'DESCRIPTION')) && (
               <div className="space-y-3">
+                {recordingError && (
+                    <div className="p-3 mb-2 text-sm bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl animate-fade-in">
+                        {recordingError}
+                    </div>
+                )}
                 <div className="relative">
                   {mode === 'ANALYZE' ? (
                     <input 

@@ -121,35 +121,77 @@ const App: React.FC = () => {
   const [error, setError] = useState<string>('');
 
   const [inputStatesByMode, setInputStatesByMode] = useState<Record<AppMode, ModeInputState>>({
-    'PROMPT': { ...INITIAL_INPUT_STATE },
-    'RECREATE': { ...INITIAL_INPUT_STATE },
-    'ANALYZE': { ...INITIAL_INPUT_STATE },
-    'TITLE': { ...INITIAL_INPUT_STATE },
-    'MASTER_TITLES': { ...INITIAL_INPUT_STATE },
-    'MAGIC_FIX': { ...INITIAL_INPUT_STATE },
-    'UPSCALE': { ...INITIAL_INPUT_STATE },
-    'MASTER_STRATEGY': { ...INITIAL_INPUT_STATE },
-    'EDIT': { ...INITIAL_INPUT_STATE },
-    'BEAST_MODE': { ...INITIAL_INPUT_STATE },
-    'OPTIMIZE': { ...INITIAL_INPUT_STATE },
-    'GAME': { ...INITIAL_INPUT_STATE }
+      'PROMPT': { ...INITIAL_INPUT_STATE },
+      'RECREATE': { ...INITIAL_INPUT_STATE },
+      'ANALYZE': { ...INITIAL_INPUT_STATE },
+      'TITLE': { ...INITIAL_INPUT_STATE },
+      'MASTER_TITLES': { ...INITIAL_INPUT_STATE },
+      'MAGIC_FIX': { ...INITIAL_INPUT_STATE },
+      'UPSCALE': { ...INITIAL_INPUT_STATE },
+      'MASTER_STRATEGY': { ...INITIAL_INPUT_STATE },
+      'EDIT': { ...INITIAL_INPUT_STATE },
+      'BEAST_MODE': { ...INITIAL_INPUT_STATE },
+      'OPTIMIZE': { ...INITIAL_INPUT_STATE },
+      'GAME': { ...INITIAL_INPUT_STATE }
   });
+  
   const [resultsByMode, setResultsByMode] = useState<Record<AppMode, GeneratedImage[]>>({
-    'PROMPT': [],
-    'RECREATE': [],
-    'ANALYZE': [],
-    'TITLE': [],
-    'MASTER_TITLES': [],
-    'MAGIC_FIX': [],
-    'UPSCALE': [],
-    'MASTER_STRATEGY': [],
-    'EDIT': [],
-    'BEAST_MODE': [],
-    'OPTIMIZE': [],
-    'GAME': []
+      'PROMPT': [], 'RECREATE': [], 'ANALYZE': [], 'TITLE': [], 'MASTER_TITLES': [],
+      'MAGIC_FIX': [], 'UPSCALE': [], 'MASTER_STRATEGY': [], 'EDIT': [],
+      'BEAST_MODE': [], 'OPTIMIZE': [], 'GAME': []
   });
+  
   const [analysisResultsByMode, setAnalysisResultsByMode] = useState<Record<string, AnalysisResult | null>>({});
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [isStateLoaded, setIsStateLoaded] = useState(false);
+
+  useEffect(() => {
+     let mounted = true;
+     const loadState = async () => {
+         try {
+             const savedInputs = await get('appState_inputStates');
+             if (savedInputs && mounted) setInputStatesByMode(savedInputs);
+
+             const savedResults = await get('appState_results');
+             if (savedResults && mounted) setResultsByMode(savedResults);
+
+             const savedAnalysis = await get('appState_analysis');
+             if (savedAnalysis && mounted) setAnalysisResultsByMode(savedAnalysis);
+
+             const savedHistory = await get('appState_history');
+             if (savedHistory && mounted) setHistory(savedHistory);
+         } catch (e) {
+             console.error('Failed to load state from idb:', e);
+         } finally {
+             if (mounted) setIsStateLoaded(true);
+         }
+     };
+     loadState();
+     return () => { mounted = false; };
+  }, []);
+
+  // Preserve state to idb whenever it changes
+  useEffect(() => {
+      if (!isStateLoaded) return;
+      set('appState_inputStates', inputStatesByMode).catch(e => console.error(e));
+  }, [inputStatesByMode, isStateLoaded]);
+
+  useEffect(() => {
+      if (!isStateLoaded) return;
+      set('appState_results', resultsByMode).catch(e => console.error(e));
+  }, [resultsByMode, isStateLoaded]);
+
+  useEffect(() => {
+      if (!isStateLoaded) return;
+      set('appState_analysis', analysisResultsByMode).catch(e => console.error(e));
+  }, [analysisResultsByMode, isStateLoaded]);
+
+  useEffect(() => {
+      if (!isStateLoaded) return;
+      // Prune history to last 20 items to save space
+      const prunedHistory = history.slice(0, 20);
+      set('appState_history', prunedHistory).catch(e => console.error(e));
+  }, [history, isStateLoaded]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [viralTitles, setViralTitles] = useState<{title: string, score: number}[]>([]);
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
@@ -194,9 +236,6 @@ const App: React.FC = () => {
 
     const loadState = async () => {
       try {
-        const savedHistory = await get('history');
-        if (savedHistory) setHistory(savedHistory);
-
         const savedViralTitles = await get('viralTitles');
         if (savedViralTitles) setViralTitles(savedViralTitles);
 
@@ -215,7 +254,6 @@ const App: React.FC = () => {
     if (!isMounted) return;
     const saveState = async () => {
       try {
-        await set('history', history);
         await set('viralTitles', viralTitles);
         await set('masterStrategy', masterStrategy);
       } catch (e) {
@@ -226,7 +264,7 @@ const App: React.FC = () => {
     // Debounce the save to prevent performance issues with large base64 strings
     const timeoutId = setTimeout(saveState, 500);
     return () => clearTimeout(timeoutId);
-  }, [history, viralTitles, masterStrategy, isMounted]);
+  }, [viralTitles, masterStrategy, isMounted]);
 
   const handleSignIn = async () => {
       try {
@@ -243,7 +281,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleGenerate = async (prompt: string, imageFile: File | null, imageUrl: string | null, faceFile?: File, analysisMode?: AnalysisMode, language?: string, maskData?: string, useInspiration?: boolean, isLowRes?: boolean, inspirationFiles?: File[], faceUrl?: string | string[], generationCount: number = 1) => {
+  const handleGenerate = async (prompt: string, imageFile: File | null, imageUrl: string | null, faceFile?: File, analysisMode?: AnalysisMode, language?: string, maskData?: string, useInspiration?: boolean, isLowRes?: boolean, inspirationFiles?: File[], faceUrl?: string | string[], generationCount: number = 1, styleVector?: any, personaEmbedding?: any) => {
     setError(''); setIsLoading(true); setAnalyzedVideoTitle(null);
     
     if (user && profile && profile.credits < 0 && mode !== 'OPTIMIZE') {
@@ -516,67 +554,89 @@ const App: React.FC = () => {
             setLoadingMessage("BEASTIFYING PROMPT...");
             const enhancedPrompt = await enhanceAndCompletePrompt(prompt, language!);
             setLoadingMessage("GENERATING VISUALS...");
-            const { images: imgSrcs, suggestedTitle } = await generateThumbnail(enhancedPrompt, base64Image, mimeType, useInspiration, inspirationBase64s, faceBase64, generationCount);
+            const { images: imgSrcs, suggestedTitle: finalTitle } = await generateThumbnail(
+                enhancedPrompt, 
+                base64Image, 
+                mimeType, 
+                useInspiration, 
+                inspirationBase64s, 
+                faceBase64, 
+                generationCount,
+                (img: string, i: number, generatedTitle: string) => {
+                    const newResult: GeneratedImage = {
+                        id: Date.now().toString() + i,
+                        src: img,
+                        originalSrc: undefined,
+                        prompt: enhancedPrompt,
+                        timestamp: Date.now(),
+                        suggestedTitle: generatedTitle,
+                        predictedCtr: undefined // analyzing
+                    };
+
+                    setResultsByMode(prev => {
+                        const currentBatch = prev[mode] || [];
+                        return { ...prev, [mode]: [...currentBatch, newResult] };
+                    });
+
+                    if (i === 0) {
+                        setIsLoading(false); // First image is ready -> close loading overlay instantly
+                        setHistory(prev => [{...newResult, mode}, ...prev]);
+                        triggerCelebration();
+                        playNotificationSound();
+                    }
+
+                    // Kick off analysis async for this specific image immediately
+                    (async () => {
+                        try {
+                            const [genMime, genBase64] = img.split(';base64,');
+                            const genMimeType = genMime.split(':')[1];
+                            let analysis = await analyzeImage(genBase64, genMimeType, 'STRATEGY', language!, enhancedPrompt);
+                            
+                            setAnalysisResultsByMode(prev => ({ ...prev, [img]: analysis }));
+                            
+                            setResultsByMode(prev => {
+                                const currentModeBatch = [...prev[mode]];
+                                const imgIndex = currentModeBatch.findIndex(item => item.src === img);
+                                if (imgIndex !== -1) {
+                                    currentModeBatch[imgIndex] = { ...currentModeBatch[imgIndex], predictedCtr: analysis.ctr_score };
+                                }
+                                return { ...prev, [mode]: currentModeBatch };
+                            });
+                        } catch (err) {
+                            console.error(`Failed to analyze image ${i + 1}:`, err);
+                            setResultsByMode(prev => {
+                                const currentModeBatch = [...prev[mode]];
+                                const imgIndex = currentModeBatch.findIndex(item => item.src === img);
+                                if (imgIndex !== -1) {
+                                    currentModeBatch[imgIndex] = { ...currentModeBatch[imgIndex], predictedCtr: 50 };
+                                }
+                                return { ...prev, [mode]: currentModeBatch };
+                            });
+                        }
+                    })();
+                },
+                styleVector,
+                personaEmbedding
+            );
+
             if (!imgSrcs || imgSrcs.length === 0) throw new Error("Generation failed to produce an image.");
-            setLastParams({ prompt: enhancedPrompt, base64Image, mimeType, useInspiration, inspirationFiles });
             
-            const newBatch: GeneratedImage[] = imgSrcs.map((src, i) => ({
-                id: Date.now().toString() + i,
-                src,
-                originalSrc: undefined,
-                prompt: enhancedPrompt,
-                timestamp: Date.now(),
-                suggestedTitle,
-                predictedCtr: undefined // undefined means analyzing
-            }));
-
-            setResultsByMode(prev => ({ ...prev, [mode]: newBatch }));
-            if (newBatch.length > 0) {
-                setHistory(prev => [{...newBatch[0], mode}, ...prev]);
-                triggerCelebration();
-                playNotificationSound();
-                
-                if (user && profile) {
-                    await addCredits(user.uid, -10 * generationCount, 20 * generationCount);
-                    await updateProgress(user.uid, 'design_3_thumbnails');
-                    const updatedProfile = await getUserProfile(user.uid);
-                    setProfile(updatedProfile);
-                }
+            // Finalize credits at the end
+            if (user && profile && imgSrcs.length > 0) {
+                await addCredits(user.uid, -10 * imgSrcs.length, 20 * imgSrcs.length);
+                await updateProgress(user.uid, 'design_3_thumbnails');
+                const updatedProfile = await getUserProfile(user.uid);
+                setProfile(updatedProfile);
             }
-            setIsLoading(false);
-
-            // Asynchronous analysis
-            imgSrcs.forEach(async (finalSrc, i) => {
-                const [genMime, genBase64] = finalSrc.split(';base64,');
-                const genMimeType = genMime.split(':')[1];
-                try {
-                    let analysis = await analyzeImage(genBase64, genMimeType, 'STRATEGY', language!, enhancedPrompt);
-                    setAnalysisResultsByMode(prev => ({ ...prev, [finalSrc]: analysis }));
-                    setResultsByMode(prev => {
-                        const updatedBatch = [...prev[mode]];
-                        const imgIndex = updatedBatch.findIndex(img => img.src === finalSrc);
-                        if (imgIndex !== -1) {
-                            updatedBatch[imgIndex] = { ...updatedBatch[imgIndex], predictedCtr: analysis.ctr_score };
-                        }
-                        return { ...prev, [mode]: updatedBatch };
-                    });
-                } catch (err) {
-                    console.error(`Failed to analyze image ${i + 1}/${imgSrcs.length}:`, err);
-                    setResultsByMode(prev => {
-                        const updatedBatch = [...prev[mode]];
-                        const imgIndex = updatedBatch.findIndex(img => img.src === finalSrc);
-                        if (imgIndex !== -1) {
-                            updatedBatch[imgIndex] = { ...updatedBatch[imgIndex], predictedCtr: 50 };
-                        }
-                        return { ...prev, [mode]: updatedBatch };
-                    });
-                }
-            });
+            
             return;
         }
 
         const count = mode === 'BEAST_MODE' ? 4 : generationCount;
-        const { images: imgSrcs, suggestedTitle } = await generateThumbnail(prompt, base64Image, mimeType, useInspiration, inspirationBase64s, faceBase64, count);
+        const { images: imgSrcs, suggestedTitle } = await generateThumbnail(
+            prompt, base64Image, mimeType, useInspiration, inspirationBase64s, faceBase64, count,
+            undefined, styleVector, personaEmbedding
+        );
         if (!imgSrcs || imgSrcs.length === 0) throw new Error("Generation failed to produce an image.");
         setLastParams({ prompt, base64Image, mimeType, useInspiration, inspirationFiles });
         
@@ -605,33 +665,36 @@ const App: React.FC = () => {
         }
         setIsLoading(false);
 
-        // Asynchronous analysis
-        imgSrcs.forEach(async (finalSrc, i) => {
-            const [genMime, genBase64] = finalSrc.split(';base64,');
-            const genMimeType = genMime.split(':')[1];
-            try {
-                let analysis = await analyzeImage(genBase64, genMimeType, 'STRATEGY', language!, prompt);
-                setAnalysisResultsByMode(prev => ({ ...prev, [finalSrc]: analysis }));
-                setResultsByMode(prev => {
-                    const updatedBatch = [...prev[mode]];
-                    const imgIndex = updatedBatch.findIndex(img => img.src === finalSrc);
-                    if (imgIndex !== -1) {
-                        updatedBatch[imgIndex] = { ...updatedBatch[imgIndex], predictedCtr: analysis.ctr_score };
-                    }
-                    return { ...prev, [mode]: updatedBatch };
-                });
-            } catch (err) {
-                console.error(`Failed to analyze image ${i + 1}/${imgSrcs.length}:`, err);
-                setResultsByMode(prev => {
-                    const updatedBatch = [...prev[mode]];
-                    const imgIndex = updatedBatch.findIndex(img => img.src === finalSrc);
-                    if (imgIndex !== -1) {
-                        updatedBatch[imgIndex] = { ...updatedBatch[imgIndex], predictedCtr: 50 };
-                    }
-                    return { ...prev, [mode]: updatedBatch };
-                });
+        // Asynchronous sequential analysis
+        (async () => {
+            for (let i = 0; i < imgSrcs.length; i++) {
+                const finalSrc = imgSrcs[i];
+                const [genMime, genBase64] = finalSrc.split(';base64,');
+                const genMimeType = genMime.split(':')[1];
+                try {
+                    let analysis = await analyzeImage(genBase64, genMimeType, 'STRATEGY', language!, prompt);
+                    setAnalysisResultsByMode(prev => ({ ...prev, [finalSrc]: analysis }));
+                    setResultsByMode(prev => {
+                        const updatedBatch = [...prev[mode]];
+                        const imgIndex = updatedBatch.findIndex(img => img.src === finalSrc);
+                        if (imgIndex !== -1) {
+                            updatedBatch[imgIndex] = { ...updatedBatch[imgIndex], predictedCtr: analysis.ctr_score };
+                        }
+                        return { ...prev, [mode]: updatedBatch };
+                    });
+                } catch (err) {
+                    console.error(`Failed to analyze image ${i + 1}/${imgSrcs.length}:`, err);
+                    setResultsByMode(prev => {
+                        const updatedBatch = [...prev[mode]];
+                        const imgIndex = updatedBatch.findIndex(img => img.src === finalSrc);
+                        if (imgIndex !== -1) {
+                            updatedBatch[imgIndex] = { ...updatedBatch[imgIndex], predictedCtr: 50 };
+                        }
+                        return { ...prev, [mode]: updatedBatch };
+                    });
+                }
             }
-        });
+        })();
 
     } catch (err: any) { 
         console.error(err);
@@ -754,7 +817,28 @@ const App: React.FC = () => {
   const realisticStats = currentAnalysisResult ? getPredictionScore(currentAnalysisResult.ctr_score) : { score: '0%', label: '', color: '', borderColor: '', shadowColor: '', confidence: '' };
 
   const handleInputStateChange = useCallback((newState: ModeInputState) => {
-    setInputStatesByMode(prev => ({ ...prev, [mode]: newState }));
+    setInputStatesByMode(prev => {
+        const oldState = prev[mode];
+        if (oldState) {
+            // Check if every property in newState is exactly the same in oldState
+            let isSame = true;
+            const allKeys = new Set([...Object.keys(oldState), ...Object.keys(newState)]);
+            for (const key of allKeys) {
+                const oldVal = (oldState as any)[key];
+                const newVal = (newState as any)[key];
+                if (oldVal !== newVal) {
+                    // Treat undefined and null as loosely equal for this check if both are falsy and not false
+                    if (!oldVal && !newVal && oldVal !== false && newVal !== false) {
+                        continue;
+                    }
+                    isSame = false;
+                    break;
+                }
+            }
+            if (isSame) return prev;
+        }
+        return { ...prev, [mode]: newState };
+    });
   }, [mode]);
 
   return (
@@ -834,7 +918,6 @@ const App: React.FC = () => {
 
         <div className={isLoading ? 'opacity-50 pointer-events-none blur-sm' : ''}>
              <InputSection 
-                key={mode}
                 mode={mode} 
                 setMode={setMode} 
                 onGenerate={handleGenerate} 
@@ -1011,7 +1094,7 @@ const App: React.FC = () => {
                 </div>
             )}
 
-            {currentAnalysisResult && showAnalysis && (
+            {mode === 'ANALYZE' && currentAnalysisResult && showAnalysis && (
                 <div className="max-w-4xl mx-auto space-y-8 animate-fade-in relative">
                     <div className="glass-panel rounded-3xl p-8 border border-cyan-500/20 flex flex-col items-center">
                         {/* 1. Score */}

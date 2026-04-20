@@ -1,16 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { XMarkIcon, CheckIcon, PlusIcon, TrashIcon, SparklesIcon } from './IconComponents';
 import { User } from 'firebase/auth';
-import { saveCustomStyle, deleteCustomStyle } from '../firebase';
+import { saveCustomStyle, deleteCustomStyle, CustomItem } from '../firebase';
 import { fetchFullChannelData, fetchRecentVideos, YouTubeChannel, YouTubeVideo } from '../services/youtubeService';
-import { analyzeStyleFromImages } from '../services/geminiService';
+import { createStyleVector } from '../services/VectorEngine';
 
 interface CustomStyle {
   id: string;
   name: string;
-  images: string[];
+  images?: string[];
   status?: 'PROCESSING' | 'READY';
   avatar?: string;
+  style_vector?: any;
 }
 
 interface StylesModalProps {
@@ -177,11 +178,8 @@ const StylesModal: React.FC<StylesModalProps> = ({
 
   const processStyle = async (id: string, newStyle: CustomStyle) => {
     try {
-        // Convert images to base64 if they are URLs (for YouTube)
-        // For uploaded images, they are already base64
-        const base64Images = await Promise.all(newStyle.images.map(async (img) => {
+        const base64Images = await Promise.all((newStyle.images || []).map(async (img) => {
             if (img.startsWith('http')) {
-                // Fetch and convert to base64
                 const response = await fetch(img);
                 const blob = await response.blob();
                 return new Promise<string>((resolve, reject) => {
@@ -194,24 +192,30 @@ const StylesModal: React.FC<StylesModalProps> = ({
             return img;
         }));
 
-        const stylePrompt = await analyzeStyleFromImages(base64Images);
+        const mimes = base64Images.map(d => {
+            const match = d.match(/^data:(image\/[a-zA-Z]+);base64,/);
+            return match ? match[1] : 'image/jpeg';
+        });
+
+        const { style_vector } = await createStyleVector(base64Images, mimes);
         
-        const readyStyle = { ...newStyle, status: 'READY' as const, stylePrompt };
+        // Remove images to strictly follow the spec "No images stored as style"
+        const readyStyle: CustomStyle = { ...newStyle, status: 'READY' as const, style_vector, images: undefined };
+        
         setCustomStyles(prev => prev.map(style => 
           style.id === id ? readyStyle : style
         ));
         if (user) {
-            saveCustomStyle(user.uid, readyStyle).catch(console.error);
+            await saveCustomStyle(user.uid, readyStyle as any);
         }
     } catch (error) {
-        console.error("Failed to process style:", error);
-        // Fallback to ready without style prompt if it fails
+        console.error("Failed to process style vector:", error);
         const readyStyle = { ...newStyle, status: 'READY' as const };
         setCustomStyles(prev => prev.map(style => 
           style.id === id ? readyStyle : style
         ));
         if (user) {
-            saveCustomStyle(user.uid, readyStyle).catch(console.error);
+            await saveCustomStyle(user.uid, readyStyle as any);
         }
     }
   };
@@ -324,39 +328,43 @@ const StylesModal: React.FC<StylesModalProps> = ({
                     <div className="space-y-4">
                       <div className="grid grid-cols-1 gap-4">
                         {customStyles.map(style => (
-                          <button 
+                          <div 
                             key={style.id}
-                            disabled={style.status === 'PROCESSING'}
                             onClick={() => {
                               if (style.status === 'READY') {
                                 setSelectedStyle(style.name);
                                 handleClose();
                               }
                             }}
-                            className={`flex items-center justify-between p-4 rounded-2xl transition-all border group ${
+                            className={`flex items-center justify-between p-4 rounded-2xl transition-all border group cursor-pointer ${
                               selectedStyle === style.name 
                                 ? 'bg-blue-500/20 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.2)]' 
                                 : style.status === 'PROCESSING'
-                                  ? 'bg-[#141414] border-gray-800 opacity-70 cursor-not-allowed'
+                                  ? 'bg-[#141414] border-gray-800 opacity-70 cursor-not-allowed pointer-events-none'
                                   : 'bg-[#1A1A1A] border-gray-800 hover:border-gray-700 hover:bg-[#222]'
                             }`}
                           >
-                            <div className="flex items-center gap-4">
-                              <div className="relative w-12 h-12 rounded-full overflow-hidden border border-white/10">
-                                {style.avatar ? (
-                                  <img src={style.avatar} alt={style.name} className={`w-full h-full object-cover ${style.status === 'PROCESSING' ? 'blur-sm' : ''}`} />
+                            <div className="flex items-center gap-4 overflow-hidden">
+                              <div className="relative w-12 h-12 rounded-full overflow-hidden border border-white/10 shrink-0">
+                                {style.style_vector?.palette && style.style_vector.palette.length > 0 ? (
+                                    <div 
+                                      className="w-full h-full"
+                                      style={{background: `linear-gradient(135deg, ${style.style_vector.palette.join(', ')})`}}
+                                    />
+                                ) : (style.avatar && style.status === 'PROCESSING') ? (
+                                  <img src={style.avatar} alt={style.name} className={`w-full h-full object-cover blur-sm`} />
                                 ) : (
                                   <div className="flex w-full h-full">
-                                    {style.images.slice(0, 2).map((img, i) => (
+                                    {(style.images || []).slice(0, 2).map((img, i) => (
                                       <img key={i} src={img} alt="" className={`w-1/2 h-full object-cover ${style.status === 'PROCESSING' ? 'blur-sm' : ''}`} />
                                     ))}
                                   </div>
                                 )}
                               </div>
-                              <span className="text-lg font-bold text-white">{style.name}</span>
+                              <span className="text-lg font-bold text-white truncate">{style.name}</span>
                             </div>
                             
-                            <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2 shrink-0 ml-4">
                               {style.status === 'PROCESSING' ? (
                                 <div className="px-4 py-1.5 bg-black/50 rounded-full border border-gray-800 flex items-center gap-2">
                                   <span className="text-sm font-medium text-gray-400">Processing..</span>
@@ -365,20 +373,20 @@ const StylesModal: React.FC<StylesModalProps> = ({
                               ) : (
                                 <>
                                   {selectedStyle === style.name && (
-                                    <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                                    <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center shrink-0">
                                       <CheckIcon className="w-4 h-4 text-white" />
                                     </div>
                                   )}
                                   <button 
                                     onClick={(e) => handleDeleteStyle(e, style.id, style.name)}
-                                    className="p-2 text-red-500/50 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                                    className="p-2 text-red-500/50 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors z-10 shrink-0"
                                   >
                                     <TrashIcon className="w-5 h-5" />
                                   </button>
                                 </>
                               )}
                             </div>
-                          </button>
+                          </div>
                         ))}
                       </div>
                       <div className="flex justify-center mt-6">

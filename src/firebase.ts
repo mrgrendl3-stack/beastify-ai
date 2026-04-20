@@ -123,10 +123,16 @@ export const updateProgress = async (uid: string, missionKey: string, incrementV
 export interface CustomItem {
     id: string;
     name: string;
-    images: string[];
+    // For older compatibility or transient UI
+    images?: string[]; 
     status?: 'PROCESSING' | 'READY';
     avatar?: string;
     stylePrompt?: string;
+
+    // Vector Engine Specifics
+    style_vector?: any; 
+    embedding?: any;
+    preview_url?: string;
 }
 
 export const getCustomPersonas = async (uid: string): Promise<CustomItem[]> => {

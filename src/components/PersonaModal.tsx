@@ -1,13 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { XMarkIcon, CheckIcon, PlusIcon, TrashIcon, SparklesIcon } from './IconComponents';
 import { User } from 'firebase/auth';
-import { saveCustomPersona, deleteCustomPersona } from '../firebase';
+import { saveCustomPersona, deleteCustomPersona, CustomItem } from '../firebase';
+import { createPersonaEmbedding } from '../services/VectorEngine';
 
 interface CustomCharacter {
   id: string;
   name: string;
-  images: string[];
+  images?: string[];
   status?: 'PROCESSING' | 'READY';
+  embedding?: any;
+  preview_url?: string;
+  avatar?: string;
 }
 
 interface PersonaModalProps {
@@ -44,7 +48,6 @@ export default function PersonaModal({
 
   useEffect(() => {
     if (!isOpen) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsCreating(false);
       setCreationStep('TUTORIAL_1');
       setNewCharName('');
@@ -74,47 +77,59 @@ export default function PersonaModal({
     });
   };
 
-  const handleCreateCharacter = () => {
+  const handleCreateCharacter = async () => {
     if (newCharName.trim() && newCharImages.length === 3) {
       setIsUploading(true);
-      setUploadProgress(0);
+      setUploadProgress(10);
       
-      // Simulate upload progress
-      const interval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 100) {
-            clearInterval(interval);
-            
-            const newChar: CustomCharacter = {
-              id: Date.now().toString(),
-              name: newCharName.trim(),
-              images: newCharImages,
-              status: 'PROCESSING'
-            };
-            
-            setCustomCharacters(prevChars => [...prevChars, newChar]);
-            
-            // Simulate processing time
-            setTimeout(() => {
-              const readyChar = { ...newChar, status: 'READY' as const };
-              setCustomCharacters(prevChars => 
-                prevChars.map(c => c.id === newChar.id ? readyChar : c)
-              );
-              if (user) {
-                  saveCustomPersona(user.uid, readyChar).catch(console.error);
-              }
-            }, 5000);
+      const newChar: CustomCharacter = {
+        id: Date.now().toString(),
+        name: newCharName.trim(),
+        images: newCharImages, // Keep images for backward compatibility if needed temporarily
+        status: 'PROCESSING'
+      };
+      
+      setCustomCharacters(prevChars => [...prevChars, newChar]);
 
-            setIsCreating(false);
-            setNewCharName('');
-            setNewCharImages([]);
-            setIsUploading(false);
-            setUploadProgress(0);
-            return 100;
+      try {
+          const mimes = newCharImages.map(d => {
+              const match = d.match(/^data:(image\/[a-zA-Z]+);base64,/);
+              return match ? match[1] : 'image/jpeg';
+          });
+          
+          setUploadProgress(40);
+          
+          // Call VectorEngine
+          const { embedding, preview_url } = await createPersonaEmbedding(newCharName.trim(), newCharImages, mimes);
+          
+          setUploadProgress(100);
+          
+          const readyChar: CustomCharacter = { 
+              ...newChar, 
+              status: 'READY',
+              embedding,
+              preview_url,
+              avatar: preview_url // Use the generated preview as the avatar
+          };
+          
+          setCustomCharacters(prevChars => 
+            prevChars.map(c => c.id === newChar.id ? readyChar : c)
+          );
+          
+          if (user) {
+              await saveCustomPersona(user.uid, readyChar as any);
           }
-          return prev + 10;
-        });
-      }, 200);
+      } catch (err) {
+          console.error("Failed to create persona embedding:", err);
+          // Revert or show error
+          setCustomCharacters(prev => prev.filter(c => c.id !== newChar.id));
+      } finally {
+          setIsCreating(false);
+          setNewCharName('');
+          setNewCharImages([]);
+          setIsUploading(false);
+          setUploadProgress(0);
+      }
     }
   };
 
@@ -240,20 +255,20 @@ export default function PersonaModal({
 
   const renderCreationForm = () => {
     return (
-      <div className="flex flex-col items-center justify-center h-full max-w-md mx-auto w-full">
-        <div className="w-12 h-12 rounded-full bg-cyan-500/20 flex items-center justify-center mb-6 border border-cyan-500/30">
+      <div className="flex flex-col items-center flex-1 h-full max-w-md mx-auto w-full overflow-y-auto no-scrollbar pb-4">
+        <div className="w-12 h-12 rounded-full bg-cyan-500/20 flex items-center justify-center mb-6 mt-4 border border-cyan-500/30 shrink-0">
           <svg className="w-6 h-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
           </svg>
         </div>
-        <h2 className="text-2xl font-black text-white mb-8 tracking-tight flex items-center gap-2">
+        <h2 className="text-2xl font-black text-white mb-8 tracking-tight flex items-center gap-2 shrink-0">
           Create <span className="text-cyan-400">Your Persona</span>
           <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </h2>
 
-        <div className="w-full space-y-4">
+        <div className="w-full space-y-4 shrink-0">
           <input 
             type="text" 
             value={newCharName}
@@ -413,7 +428,7 @@ export default function PersonaModal({
                       }}
                       className={`flex items-center p-4 rounded-2xl transition-all border group ${selectedPersona === char.name ? 'bg-cyan-500/10 border-cyan-500' : 'bg-[#141414] border-gray-800 hover:border-gray-700'} ${char.status === 'PROCESSING' ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
                     >
-                      <img src={char.images[0]} alt={char.name} className={`w-16 h-16 rounded-full object-cover border-2 border-gray-700 mr-4 ${char.status === 'PROCESSING' ? 'blur-sm' : ''}`} />
+                      <img src={char.avatar || char.images?.[0] || ""} alt={char.name} className={`w-16 h-16 rounded-full object-cover border-2 border-gray-700 mr-4 ${char.status === 'PROCESSING' ? 'blur-sm' : ''}`} />
                       <div className="flex-1">
                         <h4 className="text-sm font-black text-white flex items-center gap-2">
                           {char.name}

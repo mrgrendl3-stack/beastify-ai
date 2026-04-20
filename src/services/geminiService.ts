@@ -96,13 +96,46 @@ const safeJsonParse = (text: string | undefined, fallback: any = {}) => {
     }
 };
 
-const getClient = () => {
+let currentKeyIndex = 0;
+
+export const getClient = () => {
   // Support both Vite's import.meta.env (for Vercel) and process.env (for AI Studio)
-  const apiKey = (
+  const rawApiKey = (
     (import.meta as any).env?.VITE_GEMINI_API_KEY || 
     (typeof process !== 'undefined' ? (process.env.API_KEY || process.env.GEMINI_API_KEY) : undefined)
   ) as string;
+  
+  if (!rawApiKey) {
+      return new GoogleGenAI({ apiKey: '' });
+  }
+
+  // Split by comma to support multiple keys (Key Rotation)
+  const apiKeys = rawApiKey.split(',').map(k => k.trim()).filter(k => k.length > 0);
+  
+  // Ensure index is within bounds
+  if (currentKeyIndex >= apiKeys.length) {
+      currentKeyIndex = 0;
+  }
+  
+  const apiKey = apiKeys[currentKeyIndex];
   return new GoogleGenAI({ apiKey });
+};
+
+const rotateApiKey = () => {
+  const rawApiKey = (
+    (import.meta as any).env?.VITE_GEMINI_API_KEY || 
+    (typeof process !== 'undefined' ? (process.env.API_KEY || process.env.GEMINI_API_KEY) : undefined)
+  ) as string;
+  
+  if (!rawApiKey) return false;
+  
+  const apiKeys = rawApiKey.split(',').map(k => k.trim()).filter(k => k.length > 0);
+  if (apiKeys.length > 1) {
+      currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
+      console.log(`[API Key Rotation] Switched to key index ${currentKeyIndex + 1} of ${apiKeys.length}`);
+      return true; // Successfully rotated
+  }
+  return false; // Only one key available
 };
 
 export const checkProAccess = async (): Promise<boolean> => {
@@ -112,7 +145,7 @@ export const checkProAccess = async (): Promise<boolean> => {
     return false;
 };
 
-const wrapGeminiCall = async <T>(fn: () => Promise<T>, timeoutMs = 120000, maxRetries = 2): Promise<T> => {
+export const wrapGeminiCall = async <T>(fn: () => Promise<T>, timeoutMs = 85000, maxRetries = 2): Promise<T> => {
     let attempt = 0;
     while (attempt <= maxRetries) {
         try {
@@ -139,12 +172,21 @@ const wrapGeminiCall = async <T>(fn: () => Promise<T>, timeoutMs = 120000, maxRe
                 errorMsg = String(error);
             }
 
-            const isTimeoutOr503 = errorMsg.includes('timed out') || errorMsg.includes('503') || errorMsg.includes('Deadline expired');
+            const isRetriableError = errorMsg.includes('timed out') || errorMsg.includes('503') || errorMsg.includes('Deadline expired') || errorMsg.includes('500') || errorMsg.includes('Rpc failed') || errorMsg.includes('xhr');
             const isQuota = errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED");
 
-            if (attempt <= maxRetries && (isTimeoutOr503 || isQuota)) {
-                const delay = isQuota ? 5000 : Math.pow(2, attempt) * 1000; // Wait longer for quota
-                console.log(`Retrying in ${delay/1000}s due to ${isQuota ? 'Quota/Rate Limit' : 'Timeout'}...`);
+            if (isQuota) {
+                const rotated = rotateApiKey();
+                if (rotated && attempt <= maxRetries) {
+                    console.log("Quota exceeded. Retrying with next API key...");
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    continue; // Retry with the new key
+                }
+            }
+
+            if (attempt <= maxRetries && (isRetriableError || isQuota)) {
+                const delay = isQuota ? 3000 : Math.pow(2, attempt) * 1000;
+                console.log(`Retrying in ${delay/1000}s due to ${isQuota ? 'Quota' : 'Network/Server Error'}...`);
                 await new Promise(resolve => setTimeout(resolve, delay));
                 continue;
             }
@@ -155,7 +197,7 @@ const wrapGeminiCall = async <T>(fn: () => Promise<T>, timeoutMs = 120000, maxRe
                 }
             }
             if (isQuota) {
-                throw new Error("API Quota Exceeded. You have reached the rate limit for this API key. Please select a different API key or wait a few minutes before trying again.");
+                throw new Error("API Quota Exceeded. Please select a different API key or try again later.");
             }
             throw new Error(`AI Error: ${errorMsg || "Failed to communicate with AI"}`);
         }
@@ -279,7 +321,7 @@ const resizeImageTo1280x720 = async (base64: string, mimeType: string): Promise<
     });
 };
 
-const prepareImageForAPI = async (base64: string, inputMimeType: string): Promise<{data: string, mime: string}> => {
+export const prepareImageForAPI = async (base64: string, inputMimeType: string): Promise<{data: string, mime: string}> => {
     return new Promise((resolve) => {
         const img = new Image();
         img.onload = () => {
@@ -356,6 +398,10 @@ export const recreateThumbnail = async (base64Image: string, mimeType: string, p
         CRITICAL EXECUTION RULES:
         1. **PRESERVE POSE & GAZE**: Preserve the exact head pose, face angle, and eye gaze direction from the original image.
         2. **PRESERVE ALL PHYSICAL DETAILS (CRITICAL)**: You MUST preserve all facial details present in the original image including scars, blood, dirt, sweat, and wrinkles. Apply them exactly to the new face in the exact same positions.
+        3. **PRESERVE TEXT AND LAYERING (ABSOLUTELY CRITICAL)**: If there is ANY text, graphic, or object overlapping the face (e.g., text written across the forehead, hands covering the mouth), you MUST preserve it exactly as it is. The new face MUST be generated BEHIND the text or object. DO NOT overwrite, alter, or remove any text or overlapping elements.
+        4. **PRESERVE LIGHTING**: The new face must perfectly match the lighting direction, shadows, and color grading of the original image.
+        5. **PRESERVE EXPRESSION**: The new face must have the exact same emotional expression (e.g., screaming, smiling, shocked) as the original face.
+        6. **PRESERVE BACKGROUND**: Do NOT alter the background, clothing, or any other element of the original image. ONLY change the face.
         3. **EXPRESSION & MOUTH RULE**: The facial expression must match the original image's emotion. DO NOT open the mouth wide. The mouth should be closed or only slightly open.
         4. **BODY-WIDE SKIN TONE SYNC**: Match the skin tone of the swapped face perfectly with the body of the original image.
         5. **LIGHTING & SHADOW TRANSFER (CRITICAL)**: Transfer the exact original lighting conditions, shadows, and highlights to the swapped face. Focus on hyper-realistic quality like MrBeast thumbnails.
@@ -538,7 +584,18 @@ const enhanceThumbnailPrompt = async (rawPrompt: string, inspirationImages?: str
     }
 };
 
-export const generateThumbnail = async (prompt: string, baseImage?: string, mimeType?: string, useInspiration?: boolean, inspirationImages?: string[], faceBase64?: string | string[], count: number = 1): Promise<{ images: string[]; suggestedTitle: string }> => {
+export const generateThumbnail = async (
+    prompt: string, 
+    baseImage?: string, 
+    mimeType?: string, 
+    useInspiration?: boolean, 
+    inspirationImages?: string[], 
+    faceBase64?: string | string[], 
+    count: number = 1, 
+    onImageGenerated?: (img: string, index: number, title: string) => void,
+    styleVector?: any, 
+    personaEmbedding?: any
+): Promise<{ images: string[]; suggestedTitle: string }> => {
     return wrapGeminiCall(async () => {
         const model = 'gemini-2.5-flash-image';
         const ai = getClient();
@@ -548,40 +605,43 @@ export const generateThumbnail = async (prompt: string, baseImage?: string, mime
         const isComparison = visualDescription.includes('LEFT SIDE:') && visualDescription.includes('RIGHT SIDE:');
         const comparisonLayout = isComparison ? `
         LAYOUT RULE: This is a "Cheap vs Expensive" COMPARISON (MrBeast Style). 
-        - LEFT SIDE: Show the first item (the cheap/poor/broken item). The environment here can be stormy or cloudy, but it MUST be well-lit and clearly visible. Do NOT make it too dark or obscure the item.
-        - RIGHT SIDE: Show the second item (the expensive/luxurious/new item). The environment here MUST be beautiful, sunny, clear blue sky, and premium. Do NOT make the item solid gold unless explicitly requested; just make it look highly luxurious, modern, and expensive using premium materials (sleek metal, glass, high-end design).
-        - CENTER: Place a person prominently in the center of the image looking directly at the camera. Show ONLY the face and upper chest/shoulders. Do NOT show hands or arms. This person acts as the divider between the two halves.
-        - FACE: The person MUST be smiling or looking shocked.
-        - TEXT: Do NOT use the word "VS". You MUST write the price/value of the left item at the top left, and the price/value of the right item at the top right. 
-        - TEXT ABBREVIATION: You MUST abbreviate large numbers! For example, write "$100M" instead of "$100,000,000" or "100 Million". Write "$1B" instead of "$1,000,000,000". Write "$10K" instead of "$10,000". The text must be huge, bold, white with a thick black outline.
-        - NO DIVIDER: Do NOT include a white line or any artificial border between the sides. The person in the center is the divider.
+        - LEFT SIDE: Show the first item (the cheap/poor/broken item). 
+        - RIGHT SIDE: Show the second item (the expensive/luxurious/new item).
+        - CENTER: Place a person prominently in the center.
+        - TEXT ABBREVIATION: Abbreviate large numbers! e.g., "$100M".
+        ` : "";
+
+        // Combine inputs with vector data constraints
+        const vectorStylePrompt = styleVector ? `
+        [APPLY STYLE VECTOR]:
+        - Palette: ${styleVector.palette?.join(", ")}
+        - Contrast: ${styleVector.contrast}
+        - Face Scale: ${styleVector.face_scale}
+        - Emotion: ${styleVector.emotion}
+        - Layout: ${styleVector.layout}
+        ` : "[STYLE: MrBeast]";
+
+        const personaPrompt = personaEmbedding ? `
+        [APPLY PERSONA EMBEDDING]:
+        - Demographic: ${personaEmbedding.demographic}
+        - Features: ${personaEmbedding.defining_features?.join(", ")}
+        - Expressiveness: ${personaEmbedding.expressiveness}
+        - Lighting: ${personaEmbedding.lighting_preference}
         ` : "";
 
         const finalPrompt = `
-        [STYLE: MrBeast] 
+        ${vectorStylePrompt}
+        ${personaPrompt}
         ${comparisonLayout}
         
         VISUAL SCENE: ${visualDescription}
         
         QUALITY REQUIREMENTS:
         - DEFAULT LAYOUT & COMPOSITION RULE (CRITICAL):
-          * FACE VISIBILITY: Show ONLY the face and shoulders/arms of the main subject. Do NOT show the full body. Do NOT add gaming headsets or helmets unless explicitly requested.
-          * PLACEMENT LOGIC: If the face is on the RIGHT, the main object/action MUST be on the LEFT. If the face is on the LEFT, the main object/action MUST be on the RIGHT. If the face is in the MIDDLE, objects/actions MUST be on BOTH sides.
+          * FACE VISIBILITY: Show ONLY the face and shoulders/arms of the main subject.
           * GAZE: The subject should either look directly at the viewer OR look directly at the main object/action.
-          * CLARITY: The main object or action being reacted to MUST be extremely clear, large, and easy to understand.
-        - CROWDS, GROUPS & COMPETITIONS RULE (CRITICAL): 
-          * If the prompt involves groups competing (e.g., "50 Men vs 50 Women", "100 Streamers"), place one group clearly on the left side and the other on the right side.
-          * If it's a united group or team, they MUST wear uniform clothing of a single color (e.g., all wearing blue tracksuits or red uniforms).
-          * Do NOT focus solely on the main character's face. The competitors/crowd MUST be highly visible, detailed, and show intense emotions (struggling, fighting, determined).
-          * The prize (e.g., airplane, Lamborghini, yacht, island, money) must be massive and prominent in the background.
-          * Always leave some space at the top of the image to show a bit of the sky.
-        - HYPER-REALISM RULE: The image MUST be hyper-realistic, 8k resolution, highly detailed photography. Do NOT make it look like a painting or cartoon unless requested. Skin textures, lighting, and environments must look like a real high-budget YouTube production.
-        - NICHE ADAPTATION: Adapt the visual style perfectly to the user's requested niche (e.g., Gaming, Animal Reactions, Science, Tech, Vlogs). Make it highly professional and tailored to that niche's visual language while maintaining high CTR principles.
-        - CRITICAL TEXT RULES: NEVER cut off text. All text must be fully visible within the frame. DO NOT make all text the same color. Use varied, high-contrast colors for emphasis (e.g., make one important word GOLD or YELLOW, and another word WHITE or RED). Text must be huge, bold, and have a thick black outline or drop shadow for readability.
-        - EXACT LIKENESS RULE: If a specific celebrity is named, generate their exact real-life facial features.
         - NO LETTERBOXING: Do NOT add black bars. The image must fill the 16:9 canvas.
-        - EMOTION & ACTION: The character's facial expression MUST strongly match the mood.
-        - MOUTH RULE: The subject's mouth MUST NOT be unnaturally wide open. A closed or slightly open mouth performs better.
+        - EXACT LIKENESS RULE: If a specific person is provided, generate their exact real-life facial features.
         - REALISTIC FACES: Faces MUST look like real human photographs.
         - 16:9 Aspect Ratio (1280x720).
         - Cinematic lighting, professional photography, high detail.
@@ -641,11 +701,10 @@ export const generateThumbnail = async (prompt: string, baseImage?: string, mime
             try {
                 const img = await generateSingle();
                 images.push(img);
+                if (onImageGenerated) onImageGenerated(img, i, suggestedTitle);
             } catch (err) {
                 console.error(`Failed to generate image ${i + 1}/${count}:`, err);
-                // If it's the first image and it fails, throw the error
-                if (i === 0) throw err;
-                // Otherwise, just continue and return whatever we have so far
+                if (images.length === 0 && i === count - 1) throw err;
             }
         }
 
@@ -946,6 +1005,8 @@ Return ONLY the style prompt text.` }
     });
 };
 
+import { analyzeWithTruthEngine } from './TruthEngine';
+
 export const analyzeImage = async (base64: string, mime: string, mode: string, lang: string, title?: string): Promise<AnalysisResult> => {
     if (mode === 'DESCRIPTION') {
         const description = await describeImage(base64, mime, lang);
@@ -958,148 +1019,45 @@ export const analyzeImage = async (base64: string, mime: string, mode: string, l
         };
     }
 
-    // Simple cache key based on image data and mode/lang/title
-    const cacheKey = hashString(`${base64.substring(0, 500)}_${base64.length}_${mode}_${lang}_${title || ''}`);
-    const cached = getCachedAnalysis(cacheKey);
-    if (cached) {
-        console.log("Returning cached analysis result");
-        return cached;
-    }
+    try {
+        const result = await analyzeWithTruthEngine({
+            image_binary: `data:${mime};base64,${base64}`,
+            prompt: title || "TRUTH ENGINE ANALYSIS"
+        }, lang, mime);
 
-    return wrapGeminiCall(async () => {
-        const ai = getClient();
-        const { data, mime: cleanMime } = await prepareImageForAPI(base64, mime);
-        
-        const systemInstruction = `
-        You are a brutal YouTube thumbnail + title strategist AND a high-performance thumbnail design engine.
-
-        Your mission:
-        1) Judge thumbnails like a ruthless CTR expert
-        2) Then redesign them using elite visual systems
-
-        ---
-        🔴 CORE PRINCIPLE
-        Thumbnail = click trigger
-        Title = promise
-        Both must sell ONE idea instantly
-        If the viewer needs to think -> FAIL
-
-        ---
-        🧠 PART 1: BRUTAL ANALYSIS
-        Analyze thumbnail + title as ONE system.
-        Rules: Viewer sees thumbnail <1 second. Clarity is priority #1. No explanation allowed.
-        Evaluate:
-        1) Clarity: Can the idea be understood instantly?
-        2) Emotion: What exact emotion is triggered?
-        3) Curiosity: Does it create “I need to know more”?
-        4) Visual Hierarchy: Is there a clear focal point?
-        5) Simplicity: Is there only ONE idea?
-        6) Cognitive Load: Is it easy or mentally exhausting?
-        7) Mobile Readability: Is it clear when small?
-        8) Title Match: Do thumbnail + title reinforce each other?
-        9) Goal Clarity: Is the reward or outcome obvious?
-        10) Scroll Test: Would people STOP or SCROLL?
-
-        🚨 DETECT FAILURES: Call out Clutter, Too many ideas, Weak focus, No clear goal, Fake intensity, Title mismatch, “Cool but not clickable”. If it’s bad -> say it clearly.
-
-        ---
-        🎨 PART 3: DESIGN SYSTEM (MANDATORY REDESIGN)
-        1) COLOR SYSTEM (3 layers only): SUBJECT (Bold color), GOAL (Clean color), BACKGROUND (Calm). If colors compete -> FAIL.
-        2) VISUAL HIERARCHY: ENTRY -> ACTION -> GOAL.
-        3) SHAPE SYSTEM: Pyramid (challenge), Line (race), Circle (focus), Vertical (struggle).
-        4) SUBJECT CONTROL: One main subject ONLY.
-        5) EMOTION SYSTEM: Strong facial emotion. Background supports, not distracts.
-        6) BACKGROUND CONTROL: Remove noise.
-        7) SIMPLICITY FILTER: One idea? Instant understanding? Clear goal?
-        8) SCROLL TEST: STOP or SCROLL?
-        
-        🔥 PART 4: HIGH CTR LOGIC
-        Winning formula: One person + One danger OR one goal + One clear situation.
-        Face Rule: No fully open mouth. Slightly open OR closed mouth only. Best: tension, subtle smile, shocked but controlled.
-
-        ${title ? `VIDEO TITLE PROVIDED: "${title}"` : ''}
-
-        ---
-        OUTPUT SCHEMA:
-        You MUST return the analysis strictly in the following JSON format to integrate with the application.
-        {
-            "visual_description": "A) One-sentence brutal verdict. F) Redesign plan: Core Idea, Color Plan, Composition Layout, Shape Logic, Emotion Plan. G) Final improved thumbnail concept.",
-            "ctr_score": 85,
-            "pillars": [
-                { "name": "Curiosity", "score": 80, "status": "High", "reasoning": "..." },
-                { "name": "Virality", "score": 40, "status": "Low", "reasoning": "..." },
-                { "name": "Idea", "score": 70, "status": "Medium", "reasoning": "..." },
-                { "name": "Clarity", "score": 60, "status": "Medium", "reasoning": "..." },
-                { "name": "Emotion", "score": 90, "status": "High", "reasoning": "..." }
-            ],
-            "pros": ["What is working"],
-            "cons": ["What is killing CTR (Failures detected)"],
-            "extracted_prompt": "A prompt that could recreate this exact style."
-        }
-        
-        STRICTNESS: Be brutally honest. No humor. No fluff. If it's bad, say why it's bad.
-        CRITICAL: You MUST provide EXACTLY these 5 pillars: "Curiosity", "Virality", "Idea", "Clarity", "Emotion". Do not add any other pillars.
-        
-        CONSTRAINTS:
-        - DO NOT include any base64 image data, URLs, or extremely long descriptions.
-        - Keep 'visual_description' under 150 words.
-        - Keep each pillar's 'reasoning' under 80 words.
-        - Return ONLY the JSON object.
-        
-        LANGUAGE: Perform the analysis and provide all text in ${lang}.
-        `;
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview', 
-            contents: { 
-                parts: [
-                    { inlineData: { data, mimeType: cleanMime } }, 
-                    { text: `Perform a deep ${mode} forensic audit of this YouTube thumbnail. Return the result as a strictly valid JSON object following the provided schema.` }
-                ] 
-            },
-            config: { 
-                systemInstruction,
-                responseMimeType: 'application/json',
-                maxOutputTokens: 4096,
-                temperature: 0,
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        visual_description: { type: Type.STRING },
-                        ctr_score: { type: Type.NUMBER },
-                        pillars: {
-                            type: Type.ARRAY,
-                            items: {
-                                type: Type.OBJECT,
-                                properties: {
-                                    name: { type: Type.STRING },
-                                    score: { type: Type.NUMBER },
-                                    status: { type: Type.STRING },
-                                    reasoning: { type: Type.STRING }
-                                },
-                                required: ["name", "score", "status", "reasoning"]
-                            }
-                        },
-                        pros: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        cons: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        extracted_prompt: { type: Type.STRING }
-                    },
-                    required: ["visual_description", "ctr_score", "pillars", "pros", "cons"]
-                }
-            }
+        const buildPillar = (name: string, score: number) => ({
+            name,
+            score,
+            status: score > 80 ? 'High' : (score > 50 ? 'Medium' : 'Low') as 'High' | 'Medium' | 'Low',
+            reasoning: ""
         });
-        const result = safeJsonParse(response.text, {
+
+        const pillarsArray = [
+            buildPillar("Clarity", result.pillars.clarity),
+            buildPillar("Emotion", result.pillars.emotion),
+            buildPillar("Curiosity", result.pillars.curiosity),
+            buildPillar("Contrast", result.pillars.contrast),
+            buildPillar("Composition", result.pillars.composition)
+        ];
+
+        return {
+            visual_description: "Truth Engine score processed successfully. View detailed score.",
+            ctr_score: result.score,
+            pillars: pillarsArray,
+            pros: [],
+            cons: [],
+            extracted_prompt: ""
+        };
+    } catch (err) {
+        console.error("TruthEngine mapping failed", err);
+        return {
             visual_description: "Analysis failed due to a technical error.",
-            ctr_score: 0,
+            ctr_score: 50,
             pillars: [],
             pros: [],
             cons: []
-        });
-        if (result && result.ctr_score) {
-            setCachedAnalysis(cacheKey, result);
-        }
-        return result;
-    });
+        };
+    }
 };
 
 export const optimizeThumbnail = async (
@@ -1556,6 +1514,35 @@ Output a high-performing thumbnail that looks viral and modern. NO LETTERBOXING.
     });
 };
 
+export const validateUploadedObject = async (base64Image: string, mimeType: string): Promise<{isValid: boolean, description: string, error?: string}> => {
+    return wrapGeminiCall(async () => {
+        const ai = getClient();
+        const { data, mime } = await prepareImageForAPI(base64Image, mimeType);
+        
+        const prompt = `Analyze this image carefully. Does it contain any real person, human face, cartoon character, anime character, or any identifiable character/entity of that sort? 
+        If YES (it contains a person/character), respond ONLY with: REJECTED
+        If NO (it is an object, item, background, vehicle, book, laptop, etc. without people), respond with: ACCEPTED| followed by a very short, specific 2-5 word description of the main object (e.g., 'ACCEPTED|Red gaming laptop' or 'ACCEPTED|Old leather book').`;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [
+                prompt,
+                { inlineData: { data, mimeType: mime } }
+            ]
+        });
+
+        const text = response.text?.trim() || "";
+        if (text.startsWith("REJECTED")) {
+            return { isValid: false, description: "", error: "Image rejected. Characters and faces are not allowed here. Please upload a pure object (e.g., laptop, car, book)." };
+        } else if (text.startsWith("ACCEPTED|")) {
+            return { isValid: true, description: text.split("|")[1].trim() };
+        } else {
+            // Fallback if model behaves weirdly
+            return { isValid: true, description: "Uploaded object" };
+        }
+    });
+};
+
 export const editThumbnail = async (base64Image: string, mimeType: string, prompt: string, faceRef?: string, mask?: string): Promise<string> => {
      return wrapGeminiCall(async () => {
          const ai = getClient();
@@ -1575,6 +1562,7 @@ export const editThumbnail = async (base64Image: string, mimeType: string, promp
          - Only change what was explicitly requested in the instruction.
          - Apply the edit EXACTLY where it makes sense based on the instruction.
          - NO LETTERBOXING: Do NOT add black bars.
+         - PRESERVE TEXT AND LAYERING (CRITICAL): If there is ANY text, graphic, or object overlapping the area you are editing, you MUST preserve it exactly as it is. DO NOT overwrite, alter, or remove any text.
          - Ensure the lighting and style of the new elements match the original image perfectly.
          - CROWDS & GROUPS RULE: If adding a crowd or many people, they MUST look 100% photorealistic and human, not like 3D models or cartoons.
          - COMPETITION & RIVALRY RULE: If adding a competition or battle, the people MUST look like they are actively competing with intense, aggressive facial expressions (grit, glaring) and dynamic action, not just standing passively.`;
