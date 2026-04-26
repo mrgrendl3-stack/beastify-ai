@@ -1,5 +1,5 @@
 import { Type } from '@google/genai';
-import { getClient, prepareImageForAPI, wrapGeminiCall } from './geminiService';
+import { getClient, prepareImageForAPI, wrapGeminiCall, safeJsonParse } from './geminiService';
 
 export interface StyleVector {
     palette: string[];
@@ -28,7 +28,7 @@ export const createStyleVector = async (imagesBase64: string[], mimes: string[])
         parts.push({ text: "Analyze these thumbnails and extract a normalized style vector. Return JSON." } as any);
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-2.0-flash',
             contents: { parts },
             config: {
                 temperature: 0,
@@ -47,7 +47,8 @@ export const createStyleVector = async (imagesBase64: string[], mimes: string[])
             }
         });
 
-        const style_vector = JSON.parse(response.text || '{}') as StyleVector;
+        const jsonStr = response.text || "{}";
+        const style_vector = safeJsonParse(jsonStr) as StyleVector;
         return {
             style_id: `style_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
             style_vector
@@ -67,7 +68,7 @@ export const createPersonaEmbedding = async (name: string, faceImagesBase64: str
         parts.push({ text: "Analyze this person's face and extract a facial embedding profile. Return JSON." } as any);
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-2.0-flash',
             contents: { parts },
             config: {
                 temperature: 0,
@@ -85,24 +86,31 @@ export const createPersonaEmbedding = async (name: string, faceImagesBase64: str
             }
         });
 
-        const embedding = JSON.parse(response.text || '{}') as PersonaEmbedding;
+        const jsonStr = response.text || "{}";
+        const embedding = safeJsonParse(jsonStr) as PersonaEmbedding;
         
         // Spec: generate preview (white bg, centered face)
         const previewPrompt = `A perfectly centered, studio-quality, plain white background headshot of a person matching this profile: ${embedding.demographic}, features: ${embedding.defining_features.join(', ')}. Expression: neutral but highly engaging.`;
         
-        const imgResponse = await ai.models.generateImages({
-            model: 'gemini-2.5-flash-image',
-            prompt: previewPrompt,
+        const imgResponse = await ai.models.generateContent({
+            model: 'gemini-2.0-flash',
+            contents: { parts: [{ text: previewPrompt }] },
             config: {
-                numberOfImages: 1,
-                aspectRatio: "1:1",
-                outputMimeType: "image/jpeg"
+                imageConfig: {
+                    aspectRatio: "1:1",
+                }
             }
         });
 
-        const preview_url = imgResponse.generatedImages?.[0]?.image?.imageBytes 
-            ? `data:image/jpeg;base64,${imgResponse.generatedImages[0].image.imageBytes}`
-            : ""; // fallback
+        let preview_url = "";
+        if (imgResponse.candidates?.[0]?.content?.parts) {
+            for (const part of imgResponse.candidates[0].content.parts) {
+                if (part.inlineData && part.inlineData.data) {
+                    preview_url = `data:image/jpeg;base64,${part.inlineData.data}`;
+                    break;
+                }
+            }
+        }
 
         return {
             persona_id: `persona_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,

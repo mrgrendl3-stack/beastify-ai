@@ -9,11 +9,13 @@ import MultiLoader from './components/MultiLoader';
 import AIChat from './components/AIChat';
 import ParticleBackground from './components/ParticleBackground';
 import CTRModal from './components/CTRModal';
+import LandingPage from './components/LandingPage';
+import PricingModal from './components/PricingModal';
 import { AppMode, GeneratedImage, HistoryItem, AnalysisResult, AnalysisMode, MasterStrategyResult, BeastModeResult, BeastConcept, ModeInputState, OptimizationResult } from './types';
 import { generateThumbnail, fileToBase64, urlToBase64, generateViralTitles, analyzeImage, generateMasterStrategy, editThumbnail, getPredictionScore, upscaleImage, magicFixImage, recreateThumbnail, generateMasterTitles, oneClickFix, enhanceAndCompletePrompt, generateBeastConcepts, engineerBeastVisual, simulateBeastCTR, optimizeThumbnail } from './services/geminiService';
 import { fetchVideoTitle } from './services/youtubeService';
 import { TextIcon, XMarkIcon, SparklesIcon, SearchIcon, EyeIcon, WandIcon, ArrowRightIcon, RefreshIcon } from './components/IconComponents';
-import { get, set } from 'idb-keyval';
+import { get, set, del } from 'idb-keyval';
 
 import { auth, db, signIn, signOut, getUserProfile, createUserProfile, UserProfile, addCredits, updateProgress, saveOptimization, getSuccessfulOptimizations } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -146,52 +148,29 @@ const App: React.FC = () => {
   const [isStateLoaded, setIsStateLoaded] = useState(false);
 
   useEffect(() => {
-     let mounted = true;
-     const loadState = async () => {
-         try {
-             const savedInputs = await get('appState_inputStates');
-             if (savedInputs && mounted) setInputStatesByMode(savedInputs);
-
-             const savedResults = await get('appState_results');
-             if (savedResults && mounted) setResultsByMode(savedResults);
-
-             const savedAnalysis = await get('appState_analysis');
-             if (savedAnalysis && mounted) setAnalysisResultsByMode(savedAnalysis);
-
-             const savedHistory = await get('appState_history');
-             if (savedHistory && mounted) setHistory(savedHistory);
-         } catch (e) {
-             console.error('Failed to load state from idb:', e);
-         } finally {
-             if (mounted) setIsStateLoaded(true);
-         }
-     };
-     loadState();
-     return () => { mounted = false; };
+      let mounted = true;
+      const loadState = async () => {
+          // Unconditionally clear IDB on mount based on user request
+          try {
+              await Promise.all([
+                  del('appState_inputStates'),
+                  del('appState_results'),
+                  del('appState_analysis'),
+                  del('appState_history'),
+                  del('viralTitles'),
+                  del('masterStrategy')
+              ]);
+          } catch(e) {
+              console.error(e);
+          } finally {
+              if (mounted) setIsStateLoaded(true);
+          }
+      };
+      loadState();
+      return () => { mounted = false; };
   }, []);
 
-  // Preserve state to idb whenever it changes
-  useEffect(() => {
-      if (!isStateLoaded) return;
-      set('appState_inputStates', inputStatesByMode).catch(e => console.error(e));
-  }, [inputStatesByMode, isStateLoaded]);
-
-  useEffect(() => {
-      if (!isStateLoaded) return;
-      set('appState_results', resultsByMode).catch(e => console.error(e));
-  }, [resultsByMode, isStateLoaded]);
-
-  useEffect(() => {
-      if (!isStateLoaded) return;
-      set('appState_analysis', analysisResultsByMode).catch(e => console.error(e));
-  }, [analysisResultsByMode, isStateLoaded]);
-
-  useEffect(() => {
-      if (!isStateLoaded) return;
-      // Prune history to last 20 items to save space
-      const prunedHistory = history.slice(0, 20);
-      set('appState_history', prunedHistory).catch(e => console.error(e));
-  }, [history, isStateLoaded]);
+  // Removed state persisting useEffects that caused state retention
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [viralTitles, setViralTitles] = useState<{title: string, score: number}[]>([]);
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
@@ -209,6 +188,8 @@ const App: React.FC = () => {
   const [showZoomModal, setShowZoomModal] = useState(false);
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
   const [selectedTitleForThumbnails, setSelectedTitleForThumbnails] = useState<string | null>(null);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [showPricingModal, setShowPricingModal] = useState(false);
 
   const playNotificationSound = useCallback(() => {
     // A more pleasant, soft chime sound
@@ -232,39 +213,16 @@ const App: React.FC = () => {
         } else {
             setProfile(null);
         }
+        setIsLoadingAuth(false);
     });
 
     const loadState = async () => {
-      try {
-        const savedViralTitles = await get('viralTitles');
-        if (savedViralTitles) setViralTitles(savedViralTitles);
-
-        const savedMasterStrategy = await get('masterStrategy');
-        if (savedMasterStrategy) setMasterStrategy(savedMasterStrategy);
-      } catch (e) {
-        console.error("Failed to load state from idb", e);
-      }
+      // Intentionally left blank. IDB state is cleared on mount.
     };
     loadState();
 
     return () => unsubscribe();
   }, []);
-
-  useEffect(() => {
-    if (!isMounted) return;
-    const saveState = async () => {
-      try {
-        await set('viralTitles', viralTitles);
-        await set('masterStrategy', masterStrategy);
-      } catch (e) {
-        console.error("Failed to save state to idb", e);
-      }
-    };
-    
-    // Debounce the save to prevent performance issues with large base64 strings
-    const timeoutId = setTimeout(saveState, 500);
-    return () => clearTimeout(timeoutId);
-  }, [viralTitles, masterStrategy, isMounted]);
 
   const handleSignIn = async () => {
       try {
@@ -281,7 +239,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleGenerate = async (prompt: string, imageFile: File | null, imageUrl: string | null, faceFile?: File, analysisMode?: AnalysisMode, language?: string, maskData?: string, useInspiration?: boolean, isLowRes?: boolean, inspirationFiles?: File[], faceUrl?: string | string[], generationCount: number = 1, styleVector?: any, personaEmbedding?: any) => {
+  const handleGenerate = async (prompt: string, imageFile: File | null, imageUrl: string | null, faceFile?: File, analysisMode?: AnalysisMode, language?: string, maskData?: string, useInspiration?: boolean, isLowRes?: boolean, inspirationFiles?: File[], faceUrl?: string | string[], generationCount: number = 1, styleVector?: any, personaEmbedding?: any, imageProvider: 'gemini' | 'openai' = 'gemini') => {
     setError(''); setIsLoading(true); setAnalyzedVideoTitle(null);
     
     if (user && profile && profile.credits < 0 && mode !== 'OPTIMIZE') {
@@ -378,14 +336,8 @@ const App: React.FC = () => {
             }
             const fixedSrc = await magicFixImage(base64Image, mimeType, prompt, isLowRes);
             
-            setLoadingMessage("ANALYZING CLICK POTENTIAL...");
-            const [genMime, genBase64] = fixedSrc.split(';base64,');
-            const genMimeType = genMime.split(':')[1];
-            const analysis = await analyzeImage(genBase64, genMimeType, 'STRATEGY', language!, prompt);
-
-            const imgBatch: GeneratedImage[] = [{ id: Date.now().toString(), src: fixedSrc, originalSrc: previewSrc, prompt: prompt || (isLowRes ? "4K Upscale & Fix" : "Magic Fix"), timestamp: Date.now(), predictedCtr: analysis.ctr_score }];
+            const imgBatch: GeneratedImage[] = [{ id: Date.now().toString(), src: fixedSrc, originalSrc: previewSrc, prompt: prompt || (isLowRes ? "4K Upscale & Fix" : "Magic Fix"), timestamp: Date.now(), predictedCtr: undefined }];
             setResultsByMode(prev => ({ ...prev, [mode]: imgBatch }));
-            setAnalysisResultsByMode(prev => ({ ...prev, [fixedSrc]: analysis }));
             setHistory(prev => [{...imgBatch[0], mode}, ...prev]);
             
             // Gamification: Reward for generation
@@ -400,6 +352,36 @@ const App: React.FC = () => {
 
             triggerCelebration();
             setIsLoading(false);
+            
+            // Background analysis
+            (async () => {
+                try {
+                    const [genMime, genBase64] = fixedSrc.split(';base64,');
+                    const genMimeType = genMime.split(':')[1];
+                    const analysis = await analyzeImage(genBase64, genMimeType, 'STRATEGY', language!, prompt);
+                    
+                    setAnalysisResultsByMode(prev => ({ ...prev, [fixedSrc]: analysis }));
+                    setResultsByMode(prev => {
+                        const currentModeBatch = [...(prev[mode] || [])];
+                        const imgIndex = currentModeBatch.findIndex(item => item.src === fixedSrc);
+                        if (imgIndex !== -1) {
+                            currentModeBatch[imgIndex] = { ...currentModeBatch[imgIndex], predictedCtr: analysis.ctr_score };
+                        }
+                        return { ...prev, [mode]: currentModeBatch };
+                    });
+                } catch(err) {
+                    console.error("Background analysis failed:", err);
+                    setResultsByMode(prev => {
+                         const currentModeBatch = [...(prev[mode] || [])];
+                         const imgIndex = currentModeBatch.findIndex(item => item.src === fixedSrc);
+                         if (imgIndex !== -1) {
+                             currentModeBatch[imgIndex] = { ...currentModeBatch[imgIndex], predictedCtr: 50 };
+                         }
+                         return { ...prev, [mode]: currentModeBatch };
+                    });
+                }
+            })();
+            
             return;
         }
 
@@ -535,18 +517,50 @@ const App: React.FC = () => {
             
             if (!resultSrc) throw new Error("Generation failed to produce an image.");
 
-            setLoadingMessage("ANALYZING CLICK POTENTIAL...");
-            const [genMime, genBase64] = resultSrc.split(';base64,');
-            const genMimeType = genMime.split(':')[1];
-            const analysis = await analyzeImage(genBase64, genMimeType, 'STRATEGY', language!, prompt);
-
             setLastParams({ prompt, baseImage: base64Image, mimeType, faceFile });
-            const imgBatch: GeneratedImage[] = [{ id: Date.now().toString(), src: resultSrc, originalSrc: previewSrc, prompt, timestamp: Date.now(), predictedCtr: analysis.ctr_score }];
+            const imgBatch: GeneratedImage[] = [{ id: Date.now().toString(), src: resultSrc, originalSrc: previewSrc, prompt, timestamp: Date.now(), predictedCtr: undefined }];
             setResultsByMode(prev => ({ ...prev, [mode]: imgBatch }));
-            setAnalysisResultsByMode(prev => ({ ...prev, [resultSrc]: analysis }));
             setHistory(prev => [{...imgBatch[0], mode}, ...prev]);
+            
+            if (user && profile) {
+                await addCredits(user.uid, -10, 20);
+                await updateProgress(user.uid, 'design_3_thumbnails');
+                const updated = await getUserProfile(user.uid);
+                if (updated) setProfile(updated);
+            }
+
             playNotificationSound();
             setIsLoading(false);
+            
+            // Background analysis
+            (async () => {
+                try {
+                    const [genMime, genBase64] = resultSrc.split(';base64,');
+                    const genMimeType = genMime.split(':')[1];
+                    const analysis = await analyzeImage(genBase64, genMimeType, 'STRATEGY', language!, prompt);
+                    
+                    setAnalysisResultsByMode(prev => ({ ...prev, [resultSrc]: analysis }));
+                    setResultsByMode(prev => {
+                        const currentModeBatch = [...(prev[mode] || [])];
+                        const imgIndex = currentModeBatch.findIndex(item => item.src === resultSrc);
+                        if (imgIndex !== -1) {
+                            currentModeBatch[imgIndex] = { ...currentModeBatch[imgIndex], predictedCtr: analysis.ctr_score };
+                        }
+                        return { ...prev, [mode]: currentModeBatch };
+                    });
+                } catch(err) {
+                    console.error("Background analysis failed:", err);
+                    setResultsByMode(prev => {
+                         const currentModeBatch = [...(prev[mode] || [])];
+                         const imgIndex = currentModeBatch.findIndex(item => item.src === resultSrc);
+                         if (imgIndex !== -1) {
+                             currentModeBatch[imgIndex] = { ...currentModeBatch[imgIndex], predictedCtr: 50 };
+                         }
+                         return { ...prev, [mode]: currentModeBatch };
+                    });
+                }
+            })();
+            
             return;
         }
 
@@ -616,7 +630,8 @@ const App: React.FC = () => {
                     })();
                 },
                 styleVector,
-                personaEmbedding
+                personaEmbedding,
+                imageProvider
             );
 
             if (!imgSrcs || imgSrcs.length === 0) throw new Error("Generation failed to produce an image.");
@@ -635,7 +650,7 @@ const App: React.FC = () => {
         const count = mode === 'BEAST_MODE' ? 4 : generationCount;
         const { images: imgSrcs, suggestedTitle } = await generateThumbnail(
             prompt, base64Image, mimeType, useInspiration, inspirationBase64s, faceBase64, count,
-            undefined, styleVector, personaEmbedding
+            undefined, styleVector, personaEmbedding, imageProvider
         );
         if (!imgSrcs || imgSrcs.length === 0) throw new Error("Generation failed to produce an image.");
         setLastParams({ prompt, base64Image, mimeType, useInspiration, inspirationFiles });
@@ -697,7 +712,6 @@ const App: React.FC = () => {
         })();
 
     } catch (err: any) { 
-        console.error(err);
         let errorMsg = "Operation failed.";
         if (typeof err === 'string') {
             errorMsg = err;
@@ -713,8 +727,16 @@ const App: React.FC = () => {
             errorMsg = String(err);
         }
         
-        // Handle Permission/API Key errors by triggering the selector
-        if (errorMsg.includes("ACCESS DENIED") || errorMsg.includes("permission") || errorMsg.includes("403") || errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
+        const msgLower = errorMsg.toLowerCase();
+        const isOpenAiBilling = msgLower.includes("openai billing err") || msgLower.includes("billing hard limit");
+        const isQuota = msgLower.includes("429") || msgLower.includes("resource_exhausted") || msgLower.includes("quota") || isOpenAiBilling;
+
+        if (!isQuota) {
+            console.error(err);
+        }
+
+        // Handle Permission/API Key errors by triggering the selector (only for Gemini)
+        if (!isOpenAiBilling && (errorMsg.includes("ACCESS DENIED") || errorMsg.includes("permission") || errorMsg.includes("403") || isQuota)) {
           if (window.aistudio) {
             window.aistudio.openSelectKey();
           }
@@ -831,6 +853,12 @@ const App: React.FC = () => {
                     if (!oldVal && !newVal && oldVal !== false && newVal !== false) {
                         continue;
                     }
+                    // Handle array comparisons
+                    if (Array.isArray(oldVal) && Array.isArray(newVal)) {
+                        if (oldVal.length === newVal.length && oldVal.every((v, i) => v === newVal[i])) {
+                            continue;
+                        }
+                    }
                     isSame = false;
                     break;
                 }
@@ -842,14 +870,19 @@ const App: React.FC = () => {
   }, [mode]);
 
   return (
-    <div className={`min-h-screen bg-black text-white transition-opacity duration-1000 ${isMounted ? 'opacity-100' : 'opacity-0'} relative overflow-hidden`}>
-      <ParticleBackground />
+    <>
+      {!user && !isLoadingAuth ? (
+        <LandingPage onSignIn={handleSignIn} onOpenPricing={() => setShowPricingModal(true)} />
+      ) : (
+        <div className={`min-h-screen bg-black text-white transition-opacity duration-1000 ${isMounted ? 'opacity-100' : 'opacity-0'} relative overflow-hidden`}>
+          <ParticleBackground />
       <div className="relative z-10">
         <Header 
           onOpenHistory={() => setIsHistoryOpen(true)} 
           onOpenAnalyze={() => setMode('ANALYZE')} 
           onOpenBugTracker={() => setShowBugTracker(true)}
           onOpenGame={() => setShowGame(true)}
+          onOpenPricing={() => setShowPricingModal(true)}
           notificationPermission={'default'} 
           onRequestNotification={() => {}} 
           user={user}
@@ -885,7 +918,18 @@ const App: React.FC = () => {
                         <p className="text-sm font-medium leading-relaxed italic opacity-90">"{error}"</p>
                     </div>
 
-                    {(error.includes('Quota') || error.includes('429') || error.includes('RESOURCE_EXHAUSTED') || error.includes('permission') || error.includes('ACCESS DENIED')) && (
+                    {error.toLowerCase().includes('openai') ? (
+                         <div className="flex flex-wrap gap-3">
+                         <a 
+                             href="https://platform.openai.com/account/billing" 
+                             target="_blank" 
+                             rel="noopener noreferrer"
+                             className="bg-[#1A1A1A] hover:bg-white/10 border border-white/10 text-white text-[10px] font-black py-3 px-6 rounded-xl uppercase tracking-[0.2em] transition-all active:scale-95 flex items-center justify-center"
+                         >
+                             Manage OpenAI Billing
+                         </a>
+                     </div>
+                    ) : (error.includes('Quota') || error.includes('429') || error.includes('RESOURCE_EXHAUSTED') || error.includes('permission') || error.includes('ACCESS DENIED')) && (
                         <div className="flex flex-wrap gap-3">
                             <button 
                                 onClick={() => window.aistudio?.openSelectKey()}
@@ -983,6 +1027,7 @@ const App: React.FC = () => {
                     imageUrl={ctrModalImage.src}
                     ctrScore={ctrModalImage.predictedCtr || 100}
                     pillars={(analysisResultsByMode[ctrModalImage.src])?.pillars || []}
+                    visualDescription={(analysisResultsByMode[ctrModalImage.src])?.visual_description}
                     onViralFix={() => handleOneClickFix(ctrModalImage.src, analysisResultsByMode[ctrModalImage.src])}
                 />
             )}
@@ -1170,22 +1215,19 @@ const App: React.FC = () => {
                                     <XMarkIcon className="w-5 h-5 text-gray-400" />
                                 </button>
                                 
-                                <div className="mb-8 cursor-pointer group relative z-10" onClick={() => setShowOptimizationDetailsModal(true)}>
-                                    <div className={`px-10 py-8 rounded-[2.5rem] border ${getPredictionScore(optimizationResult.newScore).borderColor} flex flex-col items-center ${getPredictionScore(optimizationResult.newScore).shadowColor} relative backdrop-blur-xl bg-black/40 transition-transform group-hover:scale-105`}>
-                                        <AnimatedScore targetScore={optimizationResult.newScore} variant="circular" size={180} />
-                                        <span className={`text-sm font-bold uppercase tracking-widest mt-6 opacity-80 ${getPredictionScore(optimizationResult.newScore).color}`}>{getPredictionScore(optimizationResult.newScore).label}</span>
+                                <div className="w-full aspect-video rounded-3xl overflow-hidden border border-emerald-500/30 mb-6 shadow-2xl relative group z-10 bg-black mt-8">
+                                    <img src={`data:image/png;base64,${optimizationResult.optimizedImageBase64}`} className="w-full h-full object-contain" />
+                                    
+                                    {/* Score Overlay Top-Left */}
+                                    <div 
+                                        onClick={() => setShowOptimizationDetailsModal(true)}
+                                        className="absolute top-4 left-4 bg-black/80 backdrop-blur-md border border-emerald-500/50 p-3 sm:px-6 sm:py-4 rounded-2xl shadow-[0_0_20px_rgba(16,185,129,0.3)] cursor-pointer hover:scale-105 transition-transform flex flex-col items-center group/score z-20"
+                                    >
+                                        <span className="text-2xl sm:text-4xl font-black text-emerald-400">{optimizationResult.newScore}%</span>
+                                        <span className="text-[8px] sm:text-[10px] uppercase tracking-widest text-emerald-500/70 group-hover/score:text-emerald-300 mt-1">Tap for Breakdown</span>
                                     </div>
-                                    <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-gray-900 text-emerald-400 text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-gray-800 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg">
-                                        Click for detailed analysis
-                                    </div>
-                                </div>
-
-                                <div className="w-full aspect-video rounded-3xl overflow-hidden border border-emerald-500/30 mb-6 shadow-2xl relative group z-10">
-                                    <img src={`data:image/png;base64,${optimizationResult.optimizedImageBase64}`} className="w-full h-full object-cover" />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-between p-6">
-                                        <span className="text-emerald-400 font-bold uppercase tracking-widest text-sm flex items-center gap-2">
-                                            <SparklesIcon className="w-4 h-4" /> Optimized Image
-                                        </span>
+                                    
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity flex items-end justify-end p-6 z-10">
                                         <button 
                                             onClick={(e) => {
                                                 e.stopPropagation();
@@ -1194,7 +1236,7 @@ const App: React.FC = () => {
                                                 link.download = 'optimized_thumbnail.png';
                                                 link.click();
                                             }}
-                                            className="p-3 bg-black/50 hover:bg-black/80 rounded-full backdrop-blur-sm border border-white/20 text-white transition-all"
+                                            className="p-3 bg-black/50 hover:bg-black/80 rounded-full backdrop-blur-sm border border-white/20 text-white transition-all pointer-events-auto"
                                             title="Download Image"
                                         >
                                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
@@ -1203,29 +1245,6 @@ const App: React.FC = () => {
                                         </button>
                                     </div>
                                 </div>
-
-                                <div className="w-full bg-black/40 p-5 rounded-2xl border border-emerald-500/20 mb-10 text-center z-10">
-                                    <p className="text-emerald-500/80 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Suggested Title</p>
-                                    <p className="text-2xl font-bold text-white">{optimizationResult.optimizedTitle}</p>
-                                </div>
-
-                                <div className="w-full flex flex-col gap-4 mb-10 bg-[#0a0a0a] p-8 rounded-[2rem] border border-gray-800/50 shadow-xl z-10">
-                                    <h3 className="text-sm font-black text-emerald-400 uppercase tracking-widest mb-2 text-center">New Diagnostic Breakdown</h3>
-                                    {optimizationResult.newPillars.map((pillar, idx) => (
-                                        <PillarRow key={idx} pillar={pillar} />
-                                    ))}
-                                </div>
-
-                                {optimizationResult.newScore < 90 && (
-                                    <div className="w-full z-10">
-                                        <button 
-                                            onClick={() => handleOneClickFix()}
-                                            className="w-full py-6 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-black text-xl rounded-2xl shadow-[0_0_40px_rgba(168,85,247,0.2)] transition-all flex items-center justify-center gap-3 active:scale-95 group"
-                                        >
-                                            <RefreshIcon className="w-6 h-6 group-hover:animate-spin" /> TRY AGAIN (20 CREDITS)
-                                        </button>
-                                    </div>
-                                )}
                             </div>
                         )}
                     </div>
@@ -1310,6 +1329,8 @@ const App: React.FC = () => {
       )}
       </div>
     </div>
+    )}
+    </>
   );
 };
 

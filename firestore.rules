@@ -11,33 +11,25 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'email', 'referralCode', 'credits', 'points', 'rank', 'streak', 'lastLoginDate', 'referralCount', 'completedTasks', 'achievements', 'dailyMissions', 'referredBy']) &&
-             data.uid is string &&
-             data.email is string &&
-             data.referralCode is string &&
-             data.credits is number &&
-             data.points is number &&
-             data.rank is string &&
-             data.streak is number &&
-             data.lastLoginDate is string &&
-             data.referralCount is number &&
-             data.completedTasks is list &&
-             data.achievements is list &&
-             data.dailyMissions is map &&
-             (data.referredBy == null || data.referredBy is string);
-    }
-
-    function isAdmin() {
-      return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.token.email == "mrgrendl3@gmail.com" && request.auth.token.email_verified == true));
-    }
-
     match /users/{uid} {
-      allow read: if isOwner(uid) || isAdmin();
-      allow create: if isOwner(uid) && isValidUser(request.resource.data);
-      allow update: if isOwner(uid) && isValidUser(request.resource.data);
+      allow get: if isAuthenticated();
+      allow list: if isAuthenticated();
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid);
+      
+      match /customPersonas/{personaId} {
+        allow read, write: if isOwner(uid);
+      }
+      
+      match /customStyles/{styleId} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+
+    match /optimizations/{optId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
     }
 
     match /tasks/{taskId} {

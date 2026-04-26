@@ -1,11 +1,12 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, arrayUnion, collection, getDocs, query, where, addDoc, serverTimestamp, orderBy, limit, deleteDoc } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, arrayUnion, collection, getDocs, query, where, addDoc, serverTimestamp, orderBy, limit, deleteDoc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
 export const googleProvider = new GoogleAuthProvider();
 
 export const signIn = () => signInWithPopup(auth, googleProvider);
@@ -15,6 +16,7 @@ export interface UserProfile {
     uid: string;
     email: string;
     userId: string;
+    plan?: string;
     referralCode: string;
     referredBy?: string | null;
     credits: number;
@@ -44,11 +46,12 @@ export const getUserProfile = async (uid: string): Promise<UserProfile | null> =
 
 export const createUserProfile = async (user: User, referredBy?: string): Promise<UserProfile> => {
     const referralCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const userId = Math.floor(10000000 + Math.random() * 90000000).toString();
+    const userId = Math.floor(1000000000 + Math.random() * 9000000000).toString();
     const profile: UserProfile = {
         uid: user.uid,
         email: user.email || '',
         userId,
+        plan: 'Starter',
         referralCode,
         referredBy: referredBy || null,
         credits: 10000, // Starting credits

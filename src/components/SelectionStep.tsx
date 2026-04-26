@@ -137,35 +137,27 @@ const CinematicViewer: React.FC<CinematicViewerProps> = ({ images, onDelete, onA
 
                 <div 
                     ref={imageWrapperRef}
-                    className="aspect-video relative w-full flex items-center justify-center bg-[#050505] overflow-hidden cursor-zoom-in"
-                    onMouseMove={handleMouseMove}
-                    onTouchMove={handleMouseMove}
+                    className="aspect-video relative w-full flex items-center justify-center bg-[#050505] overflow-hidden cursor-zoom-in group"
                     onClick={() => onZoom(activeImage.src)}
                 >
                     {!imgError ? (
                         <>
                             <img src={activeImage.src} alt="Generated Thumbnail" className="absolute inset-0 w-full h-full object-contain pointer-events-none rounded-[2.8rem]" onError={() => setImgError(true)} />
                             
-                            {isComparing && activeImage.originalSrc && (
-                                <div className="absolute inset-y-0 left-0 overflow-hidden border-r border-cyan-400 z-10 rounded-l-[2.8rem]" style={{ width: `${comparePos}%` }}>
-                                    <div className="relative h-full" style={{ width: wrapperWidth ? `${wrapperWidth}px` : '100vw' }}>
-                                        <img src={activeImage.originalSrc} alt="Original" className="absolute inset-0 w-full h-full object-contain pointer-events-none rounded-l-[2.8rem]" />
-                                    </div>
-                                </div>
-                            )}
-                             {isComparing && activeImage.originalSrc && (
-                                <div className="absolute inset-y-0 w-0.5 bg-cyan-400 cursor-col-resize z-30 shadow-[0_0_15px_rgba(34,211,238,0.8)] flex items-center justify-center pointer-events-none" style={{ left: `${comparePos}%` }}>
-                                    <div className="w-10 h-10 rounded-full bg-cyan-500 text-black flex items-center justify-center shadow-2xl transform -translate-x-1/2 liquid-glass-icon">
-                                        <CompareIcon className="w-5 h-5" />
-                                    </div>
-                                </div>
-                            )}
-                            {isComparing && activeImage.originalSrc && (
-                                <>
-                                    <div className="absolute bottom-4 left-4 z-40 bg-black/60 backdrop-blur text-white text-[10px] px-2 py-1 rounded font-bold pointer-events-none border border-white/20">ORIGINAL</div>
-                                    <div className="absolute bottom-4 right-4 z-40 bg-cyan-900/80 backdrop-blur text-cyan-400 text-[10px] px-2 py-1 rounded font-bold pointer-events-none border border-cyan-500/30">BEASTIFIED</div>
-                                </>
-                            )}
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-30 rounded-[2.8rem] pointer-events-none" />
+                            <button 
+                                className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 p-4 bg-gray-900/90 border border-gray-700 rounded-full text-white hover:text-cyan-400 hover:border-cyan-400 hover:scale-110 active:scale-95 transition-all shadow-2xl opacity-0 group-hover:opacity-100 z-40"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    const link = document.createElement('a'); 
+                                    link.href = activeImage.src; 
+                                    link.download = `beast-thumb-${activeImage.id}.png`; 
+                                    link.click();
+                                }}
+                                title="Download"
+                            >
+                                <DownloadIcon className="w-8 h-8 pointer-events-none" />
+                            </button>
                         </>
                     ) : (
                         <div className="flex flex-col items-center justify-center text-gray-500"><div className="text-4xl mb-2">⚠️</div><p>Image Load Failed</p></div>

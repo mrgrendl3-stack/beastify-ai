@@ -44,40 +44,153 @@ export const parseDuration = (duration: string): string => {
   return result;
 };
 
+export const searchChannels = async (query: string): Promise<{ results: YouTubeChannel[]; error?: string }> => {
+    if (!YOUTUBE_API_KEY) return { results: [] };
+    if (!query || query.trim().length < 3) return { results: [] }; // Require at least 3 characters
+
+    try {
+        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query.trim())}&maxResults=5&key=${YOUTUBE_API_KEY}`;
+        const searchRes = await fetch(searchUrl);
+        
+        if (!searchRes.ok) {
+            const errorData = await searchRes.json().catch(() => ({}));
+            console.error("Search API Error:", errorData);
+            return { results: [], error: errorData.error?.message || "YouTube API is blocked or unavailable." };
+        }
+
+        const searchData = await searchRes.json();
+        if (!searchData.items || searchData.items.length === 0) return { results: [] };
+
+        const channelIds = searchData.items
+            .map((item: any) => item.id?.channelId || item.snippet?.channelId)
+            .filter(Boolean)
+            .join(',');
+
+        if (!channelIds) return { results: [] };
+
+        const statsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails,statistics&id=${channelIds}&key=${YOUTUBE_API_KEY}`;
+        const statsRes = await fetch(statsUrl);
+
+        if (!statsRes.ok) {
+            const errorData = await statsRes.json().catch(() => ({}));
+            return { results: [], error: errorData.error?.message || "YouTube API is blocked or unavailable." };
+        }
+
+        const statsData = await statsRes.json();
+        if (!statsData.items) return { results: [] };
+
+        return {
+            results: statsData.items.map((item: any) => ({
+                id: item.id,
+                name: item.snippet.title,
+                avatar: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url,
+                subscribers: formatNumber(parseInt(item.statistics.subscriberCount || "0", 10)),
+                videosCount: formatNumber(parseInt(item.statistics.videoCount || "0", 10)),
+                uploadsPlaylistId: item.contentDetails?.relatedPlaylists?.uploads || ""
+            }))
+        };
+    } catch (e) {
+        console.error("Failed to search channels:", e);
+        return { results: [], error: "Failed to connect to YouTube API." };
+    }
+};
+
 export const fetchFullChannelData = async (urlOrHandle: string): Promise<{ channel: YouTubeChannel | null, error?: string }> => {
     if (!YOUTUBE_API_KEY) return { channel: null, error: "API Key missing" };
 
     try {
-        let handle = urlOrHandle;
-        let queryParam = "";
+        let handle = urlOrHandle.trim();
+        let queryParams: string[] = [];
         
         if (urlOrHandle.includes('youtube.com/')) {
             const handleMatch = urlOrHandle.match(/@[\w.-]+/);
             const channelIdMatch = urlOrHandle.match(/channel\/(UC[\w-]+)/);
+            const usernameMatch = urlOrHandle.match(/user\/([\w-]+)/);
+            const cMatch = urlOrHandle.match(/\/c\/([\w-]+)/);
             
             if (handleMatch) {
-                handle = handleMatch[0];
-                queryParam = `forHandle=${handle}`;
+                queryParams.push(`forHandle=${handleMatch[0]}`);
             } else if (channelIdMatch) {
-                queryParam = `id=${channelIdMatch[1]}`;
+                queryParams.push(`id=${channelIdMatch[1]}`);
+            } else if (usernameMatch) {
+                queryParams.push(`forUsername=${usernameMatch[1]}`);
+            } else if (cMatch) {
+                // we can't reliably resolve /c/ directly via channels endpoint, might need search
+                queryParams.push(`forUsername=${cMatch[1]}`);
+                // fallback will search anyway
             } else {
                 return { channel: null, error: "Invalid YouTube URL" };
             }
         } else if (urlOrHandle.startsWith('@')) {
-            queryParam = `forHandle=${urlOrHandle}`;
+            queryParams.push(`forHandle=${urlOrHandle}`);
         } else {
-            // If it doesn't have youtube.com and doesn't start with @, assume it's a handle and prepend @
-            queryParam = `forHandle=@${urlOrHandle}`;
+            // Assume it's a handle first, then try username
+            const cleanHandle = urlOrHandle.replace(/\s+/g, '');
+            queryParams.push(`forHandle=@${cleanHandle}`);
+            queryParams.push(`forUsername=${cleanHandle}`);
         }
 
-        const statsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails,statistics&${queryParam}&key=${YOUTUBE_API_KEY}`;
-        const statsRes = await fetch(statsUrl);
-        
-        if (!statsRes.ok) return { channel: null, error: "Failed to fetch channel data" };
+        let statsData = null;
+        let lastError = null;
 
-        const statsData = await statsRes.json();
+        for (const queryParam of queryParams) {
+            const statsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails,statistics&${queryParam}&key=${YOUTUBE_API_KEY}`;
+            const statsRes = await fetch(statsUrl);
+            if (statsRes.ok) {
+                const data = await statsRes.json();
+                if (data.items && data.items.length > 0) {
+                    statsData = data;
+                    break;
+                }
+            } else {
+                const errorData = await statsRes.json().catch(() => ({}));
+                const reason = errorData.error?.errors?.[0]?.reason;
+                if (reason === 'accessNotConfigured' || reason === 'serviceDisabled') {
+                    lastError = "YouTube API is disabled in Google Console. Please enable 'YouTube Data API v3'.";
+                    break; 
+                }
+                lastError = errorData.error?.message || `Channels API Error: ${statsRes.status}`;
+            }
+        }
+        
+        // Fallback to Search API if we didn't find the channel by handle/id/username
         if (!statsData?.items || statsData.items.length === 0) {
-            return { channel: null, error: "Channel not found" };
+            // If we already hit a critical error like disabled service, stop here
+            if (lastError?.includes("disabled")) {
+                return { channel: null, error: lastError };
+            }
+
+            const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(urlOrHandle)}&maxResults=1&key=${YOUTUBE_API_KEY}`;
+            const searchRes = await fetch(searchUrl);
+            
+            if (searchRes.ok) {
+                const searchData = await searchRes.json();
+                if (searchData.items && searchData.items.length > 0) {
+                    // Extract channelId safely
+                    const channelId = searchData.items[0].id?.channelId || searchData.items[0].snippet?.channelId;
+                    
+                    if (channelId) {
+                        const statsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails,statistics&id=${channelId}&key=${YOUTUBE_API_KEY}`;
+                        const statsRes = await fetch(statsUrl);
+                        if (statsRes.ok) {
+                            const data = await statsRes.json();
+                            if (data.items && data.items.length > 0) {
+                                statsData = data;
+                            }
+                        } else {
+                             const errorData = await statsRes.json().catch(() => ({}));
+                             lastError = errorData.error?.message || `Channels API Error: ${statsRes.status}`;
+                        }
+                    }
+                }
+            } else {
+                const errorData = await searchRes.json().catch(() => ({}));
+                lastError = errorData.error?.message || `Search API Error: ${searchRes.status}`;
+            }
+        }
+
+        if (!statsData?.items || statsData.items.length === 0) {
+            return { channel: null, error: lastError ? `API Error: ${lastError}` : "Channel not found" };
         }
 
         const item = statsData.items[0];
@@ -114,7 +227,7 @@ export const fetchRecentVideos = async (playlistId: string): Promise<YouTubeVide
         const videoIds = playlistData.items.map((item: any) => item.snippet?.resourceId?.videoId).filter(Boolean).join(',');
         if (!videoIds) return [];
 
-        // 2. Fetch video details (for duration and views)
+        // 2. Fetch video details (for duration, views, publishedAt)
         const videosUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${videoIds}&key=${YOUTUBE_API_KEY}`;
         const videosRes = await fetch(videosUrl);
         if (!videosRes.ok) {
@@ -125,7 +238,7 @@ export const fetchRecentVideos = async (playlistId: string): Promise<YouTubeVide
 
         if (!videosData.items) return [];
 
-        return videosData.items.map((item: any) => {
+        const videos = videosData.items.map((item: any) => {
             const durationStr = item.contentDetails.duration;
             const duration = parseDuration(durationStr);
             // A simple heuristic for Shorts: duration <= 60s (1:00)
@@ -138,8 +251,18 @@ export const fetchRecentVideos = async (playlistId: string): Promise<YouTubeVide
                 rawViews: parseInt(item.statistics.viewCount || "0"),
                 duration: duration,
                 thumbnail: item.snippet.thumbnails.maxres?.url || item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url,
-                isShort: !!isShort
+                isShort: !!isShort,
+                publishedAt: new Date(item.snippet.publishedAt).getTime() // Used for sorting
             };
+        });
+
+        // Ensure strictly chronological order (newest to oldest) as YouTube API videos endpoint does not guarantee ID order preservation
+        videos.sort((a: any, b: any) => b.publishedAt - a.publishedAt);
+        
+        // Remove publishedAt before returning to match interface exactly if strict typing is an issue, although TS allows extra properties
+        return videos.map((v: any) => {
+            const { publishedAt, ...rest } = v;
+            return rest;
         });
     } catch (e) {
         return [];

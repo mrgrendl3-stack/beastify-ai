@@ -21,7 +21,7 @@ import { getCustomPersonas, getCustomStyles, saveCustomPersona, saveCustomStyle,
 interface InputSectionProps {
   mode: AppMode;
   setMode: (mode: AppMode) => void;
-  onGenerate: (prompt: string, imageFile: File | null, imageUrl: string | null, faceFile?: File, analysisMode?: AnalysisMode, language?: string, maskData?: string, useInspiration?: boolean, isLowRes?: boolean, inspirationFiles?: File[], faceUrl?: string | string[], generationCount?: number, styleVector?: any, personaEmbedding?: any) => void;
+  onGenerate: (prompt: string, imageFile: File | null, imageUrl: string | null, faceFile?: File, analysisMode?: AnalysisMode, language?: string, maskData?: string, useInspiration?: boolean, isLowRes?: boolean, inspirationFiles?: File[], faceUrl?: string | string[], generationCount?: number, styleVector?: any, personaEmbedding?: any, imageProvider?: 'gemini' | 'openai') => void;
   isLoading: boolean;
   lastGeneratedImage?: string;
   predictedCtr?: number;
@@ -116,26 +116,50 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
   const [ratioError, setRatioError] = useState<string | null>(null);
   const [showCountMenu, setShowCountMenu] = useState(false);
   const [generationCount, setGenerationCount] = useState(2);
+  const [imageProvider, setImageProvider] = useState<'gemini' | 'openai'>('gemini');
 
   // Sync internal state with inputState when mode changes
   useEffect(() => {
     if (inputState) {
-        setPrompt(inputState.prompt || '');
-        setImageFile(inputState.imageFile || null);
-        setImageUrl(inputState.imageUrl || '');
-        setInputType(inputState.inputType || 'UPLOAD');
-        setPreview(inputState.preview || null);
-        setSelectedPersona(inputState.selectedPersona || null);
+        setPrompt(prev => prev === (inputState.prompt || '') ? prev : (inputState.prompt || ''));
+        setImageFile(prev => prev === (inputState.imageFile || null) ? prev : (inputState.imageFile || null));
+        setImageUrl(prev => prev === (inputState.imageUrl || '') ? prev : (inputState.imageUrl || ''));
+        setInputType(prev => prev === (inputState.inputType || 'UPLOAD') ? prev : (inputState.inputType || 'UPLOAD'));
+        setPreview(prev => prev === (inputState.preview || null) ? prev : (inputState.preview || null));
+        setSelectedPersona(prev => prev === (inputState.selectedPersona || null) ? prev : (inputState.selectedPersona || null));
         
+        // Sync additional properties
+        setYoutubeUrl(prev => prev === (inputState.youtubeUrl || '') ? prev : (inputState.youtubeUrl || ''));
+        setVideoTitle(prev => prev === (inputState.videoTitle || '') ? prev : (inputState.videoTitle || ''));
+        setBriefDescription(prev => prev === (inputState.briefDescription || '') ? prev : (inputState.briefDescription || ''));
+        setUseInspiration(prev => prev === (inputState.useInspiration || false) ? prev : (inputState.useInspiration || false));
+        setIsLowRes(prev => prev === (inputState.isLowRes || false) ? prev : (inputState.isLowRes || false));
+        
+        setInspirationFiles(prev => {
+            if (prev.length === (inputState.inspirationFiles?.length || 0) && prev.every((f, i) => f === inputState.inspirationFiles![i])) return prev;
+            return inputState.inspirationFiles || [];
+        });
+        setInspirationPreviews(prev => {
+            if (prev.length === (inputState.inspirationPreviews?.length || 0) && prev.every((p, i) => p === inputState.inspirationPreviews![i])) return prev;
+            return inputState.inspirationPreviews || [];
+        });
+
         // Also sync customFace parameters to support edits
-        setCustomFaceFile(inputState.customFaceFile || null);
-        setCustomFacePreview(inputState.customFacePreview || null);
+        setCustomFaceFile(prev => prev === (inputState.customFaceFile || null) ? prev : (inputState.customFaceFile || null));
+        setCustomFacePreview(prev => prev === (inputState.customFacePreview || null) ? prev : (inputState.customFacePreview || null));
     } else {
-        setPrompt('');
-        setImageFile(null);
-        setImageUrl('');
-        setPreview(null);
-        setSelectedPersona(null);
+        setPrompt(prev => prev === '' ? prev : '');
+        setImageFile(prev => prev === null ? prev : null);
+        setImageUrl(prev => prev === '' ? prev : '');
+        setPreview(prev => prev === null ? prev : null);
+        setSelectedPersona(prev => prev === null ? prev : null);
+        setYoutubeUrl(prev => prev === '' ? prev : '');
+        setVideoTitle(prev => prev === '' ? prev : '');
+        setBriefDescription(prev => prev === '' ? prev : '');
+        setUseInspiration(prev => prev === false ? prev : false);
+        setIsLowRes(prev => prev === false ? prev : false);
+        setInspirationFiles(prev => prev.length === 0 ? prev : []);
+        setInspirationPreviews(prev => prev.length === 0 ? prev : []);
     }
   }, [mode, inputState]); // Sync when mode changes or inputState force updates
 
@@ -218,16 +242,16 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
   // YouTube URL Data Fetching
   useEffect(() => {
     const fetchVideoInfo = async () => {
-      if (!youtubeUrl || !youtubeUrl.includes('youtube.com') && !youtubeUrl.includes('youtu.be')) {
-        setVideoTitle('');
+      if (!youtubeUrl || (!youtubeUrl.includes('youtube.com') && !youtubeUrl.includes('youtu.be'))) {
+        setVideoTitle(prev => prev === '' ? prev : '');
         return;
       }
 
       const data = await getVideoData(youtubeUrl);
       if ('title' in data) {
-        setVideoTitle(data.title);
+        setVideoTitle(prev => prev === data.title ? prev : data.title);
         if (data.thumbnail) {
-          setPreview(data.thumbnail);
+          setPreview(prev => prev === data.thumbnail ? prev : data.thumbnail);
         }
       }
     };
@@ -255,10 +279,10 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
           reader.onload = (event) => {
             const dataUrl = event.target?.result as string;
             if (mode === 'RECREATE') {
-              setCustomFacePreview(dataUrl);
-              setSelectedPersona('CUSTOM');
+              setCustomFacePreview(prev => prev !== dataUrl ? dataUrl : prev);
+              setSelectedPersona(prev => prev !== 'CUSTOM' ? 'CUSTOM' : prev);
             } else {
-              setPreview(dataUrl);
+              setPreview(prev => prev !== dataUrl ? dataUrl : prev);
             }
           };
           reader.readAsDataURL(file);
@@ -299,8 +323,18 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
       // User request: Don't animate/scroll the nav container when changing tabs.
   }, [mode]);
 
+  const prevInputStateRef = useRef(inputState);
+
   // Update parent state whenever internal state changes
   useEffect(() => {
+     // Check if the current render was caused by (or coincided with) a new inputState prop.
+     // If so, our local states might be stale while the downward sync is processing.
+     // By skipping upward sync when the props change, we mathematically eliminate the ping-pong reflection loop.
+     if (prevInputStateRef.current !== inputState) {
+         prevInputStateRef.current = inputState;
+         return;
+     }
+
     onInputStateChange({
       prompt,
       imageFile,
@@ -318,7 +352,7 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
       videoTitle,
       selectedPersona
     });
-  }, [prompt, imageFile, imageUrl, inputType, preview, youtubeUrl, customFaceFile, customFacePreview, useInspiration, inspirationFiles, inspirationPreviews, isLowRes, briefDescription, videoTitle, selectedPersona, onInputStateChange]);
+  }, [prompt, imageFile, imageUrl, inputType, preview, youtubeUrl, customFaceFile, customFacePreview, useInspiration, inspirationFiles, inspirationPreviews, isLowRes, briefDescription, videoTitle, selectedPersona, onInputStateChange, inputState]);
 
   // Conversational Workflow: Sync preview with last generated image
   useEffect(() => {
@@ -642,7 +676,8 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
         customFaceImages || faceUrl,
         generationCount,
         styleVectorToPass,
-        personaEmbeddingToPass
+        personaEmbeddingToPass,
+        imageProvider
     );
   };
 
@@ -1207,15 +1242,15 @@ const InputSection: React.FC<InputSectionProps> = ({ mode, setMode, onGenerate, 
                   </span>
                 </button>
                 {mode !== 'ANALYZE' && (
-                  <div className="relative">
+                  <div className="relative flex items-center">
                     <button 
                       onClick={() => setShowCountMenu(!showCountMenu)}
                       disabled={isGenerateDisabled}
-                      className={`px-6 py-4 border-l border-white/20 rounded-r-full font-black text-xl tracking-widest transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-2xl flex items-center gap-1 text-white ${brandGradient} hover:opacity-90`}
+                      className={`px-6 py-4 border-l border-white/20 font-black text-xl tracking-widest transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-2xl flex items-center gap-1 text-white ${brandGradient} hover:opacity-90 rounded-r-full`}
                     >
                       {generationCount}x <span className="text-sm ml-1">›</span>
                     </button>
-                    
+
                     {showCountMenu && (
                       <div className="absolute bottom-full right-0 mb-4 w-32 bg-[#1A1A1A] border border-gray-800 rounded-2xl shadow-2xl overflow-hidden z-50">
                         {getCountOptions().map(count => (

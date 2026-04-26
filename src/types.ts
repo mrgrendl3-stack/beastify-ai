@@ -45,6 +45,12 @@ export interface AnalysisPillar {
     score: number; 
     reasoning: string;
     status: 'High' | 'Medium' | 'Low';
+    details?: {
+        observation: string;
+        impact: string;
+        judgement: string;
+        fix: string;
+    };
 }
 
 export interface DeepAnalysisItem {

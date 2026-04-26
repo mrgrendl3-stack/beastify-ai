@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { TargetIcon, KeyIcon, HistoryIcon, BellIcon, MenuIcon, CoinsIcon, ShareIcon, UserIcon } from './IconComponents';
+import { TargetIcon, KeyIcon, HistoryIcon, BellIcon, MenuIcon, CoinsIcon, ShareIcon, UserIcon, SparklesIcon } from './IconComponents';
 import { User } from 'firebase/auth';
 import { UserProfile } from '../firebase';
 
@@ -9,6 +9,7 @@ interface HeaderProps {
     onOpenAnalyze: () => void;
     onOpenBugTracker: () => void;
     onOpenGame: () => void;
+    onOpenPricing: () => void;
     notificationPermission: string;
     onRequestNotification: () => void;
     user: User | null;
@@ -17,9 +18,10 @@ interface HeaderProps {
     onSignOut: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenAnalyze, onOpenBugTracker, onOpenGame, notificationPermission, onRequestNotification, user, profile, onSignIn, onSignOut }) => {
+const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenAnalyze, onOpenBugTracker, onOpenGame, onOpenPricing, notificationPermission, onRequestNotification, user, profile, onSignIn, onSignOut }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showId, setShowId] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const handleKeyClick = async () => {
@@ -80,10 +82,33 @@ const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenAnalyze, onOpenBug
                   {user ? (
                       <>
                         <div className="px-4 py-3 border-b border-gray-800">
-                            <p className="text-sm font-black text-white truncate">{user.displayName}</p>
-                            <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-0.5">ID: {profile?.userId || '...'}</p>
+                            <div className="flex items-center justify-between min-w-0 pr-1">
+                                <p className="text-sm font-black text-white truncate max-w-[120px]">{user.displayName}</p>
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 uppercase tracking-wider whitespace-nowrap shrink-0">
+                                  {profile?.plan || 'Starter'}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between mt-1.5 text-[10px] text-gray-500 uppercase tracking-widest">
+                               <span>ID: {showId ? (profile?.userId || '..........') : '**********'}</span>
+                               <button onClick={(e) => { e.stopPropagation(); setShowId(!showId); }} className="hover:text-cyan-400 transition-colors p-1 -mr-1">
+                                  {showId ? (
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                                  ) : (
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                  )}
+                               </button>
+                            </div>
                         </div>
 
+                        <button 
+                            onClick={onOpenPricing}
+                            className="w-full flex items-center px-4 py-3 text-sm text-white hover:bg-cyan-900/40 hover:text-cyan-300 transition-colors font-bold group border-b border-gray-800"
+                        >
+                            <SparklesIcon className="w-4 h-4 mr-3 text-cyan-400 group-hover:scale-110 transition-transform" />
+                            <span className="flex-1 text-left">Upgrade Plan</span>
+                            <span className="text-[10px] uppercase tracking-widest bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded border border-cyan-500/30">Pro</span>
+                        </button>
+                        
                         <button 
                             onClick={copyReferralLink}
                             className="w-full flex items-center px-4 py-3 text-sm text-gray-300 hover:bg-gray-900 hover:text-white transition-colors"

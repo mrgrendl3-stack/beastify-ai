@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { XMarkIcon, CheckIcon, PlusIcon, TrashIcon, SparklesIcon } from './IconComponents';
 import { User } from 'firebase/auth';
 import { saveCustomStyle, deleteCustomStyle, CustomItem } from '../firebase';
-import { fetchFullChannelData, fetchRecentVideos, YouTubeChannel, YouTubeVideo } from '../services/youtubeService';
+import { fetchFullChannelData, fetchRecentVideos, searchChannels, YouTubeChannel, YouTubeVideo } from '../services/youtubeService';
 import { createStyleVector } from '../services/VectorEngine';
 
 interface CustomStyle {
@@ -45,6 +45,9 @@ const StylesModal: React.FC<StylesModalProps> = ({
   
   // Create Style State
   const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [searchResults, setSearchResults] = useState<YouTubeChannel[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isProcessingChannel, setIsProcessingChannel] = useState(false);
   const [channelError, setChannelError] = useState('');
   const [fetchedChannel, setFetchedChannel] = useState<YouTubeChannel | null>(null);
@@ -58,6 +61,8 @@ const StylesModal: React.FC<StylesModalProps> = ({
 
   const resetCreateState = () => {
     setYoutubeUrl('');
+    setSearchResults([]);
+    setIsSearching(false);
     setIsProcessingChannel(false);
     setChannelError('');
     setFetchedChannel(null);
@@ -105,6 +110,52 @@ const StylesModal: React.FC<StylesModalProps> = ({
 
   const handleRemoveImage = (index: number) => {
     setUploadedImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setYoutubeUrl(val);
+    
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    
+    if (val.trim().length >= 3) {
+      setIsSearching(true);
+      setChannelError('');
+      searchTimeoutRef.current = setTimeout(async () => {
+        const { results, error } = await searchChannels(val);
+        setSearchResults(results);
+        if (error) {
+           setChannelError(error);
+        }
+        setIsSearching(false);
+      }, 500);
+    } else {
+      setSearchResults([]);
+      setIsSearching(false);
+    }
+  };
+
+  const handleSelectChannel = async (channelId: string) => {
+    setYoutubeUrl(channelId);
+    setSearchResults([]);
+    setIsProcessingChannel(true);
+    setChannelError('');
+    
+    const { channel, error } = await fetchFullChannelData(channelId);
+    
+    if (error || !channel) {
+        setChannelError(error || "Failed to fetch channel");
+        setIsProcessingChannel(false);
+        return;
+    }
+
+    setFetchedChannel(channel);
+    
+    const videos = await fetchRecentVideos(channel.uploadsPlaylistId);
+    setFetchedVideos(videos);
+    
+    setIsProcessingChannel(false);
+    setView('SELECT_VIDEOS');
   };
 
   const handleContinueYoutube = async () => {
@@ -424,14 +475,44 @@ const StylesModal: React.FC<StylesModalProps> = ({
               </div>
 
               {createTab === 'YOUTUBE' ? (
-                <div className="space-y-6 flex flex-col items-center">
-                  <input 
-                    type="text" 
-                    value={youtubeUrl}
-                    onChange={(e) => setYoutubeUrl(e.target.value)}
-                    placeholder="Enter YouTube channel URL or username (e.g. @channel)"
-                    className="w-full bg-[#1A1A1A] border border-gray-700 rounded-2xl px-6 py-4 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors text-center"
-                  />
+                <div className="space-y-6 flex flex-col items-center relative w-full max-w-2xl mx-auto">
+                  <div className="w-full relative">
+                    <input 
+                      type="text" 
+                      value={youtubeUrl}
+                      onChange={handleSearchChange}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleContinueYoutube(); }}
+                      placeholder="Enter YouTube channel URL, @handle, or name..."
+                      className="w-full bg-[#1A1A1A] border border-gray-700 rounded-2xl px-6 py-4 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 transition-colors text-center shadow-inner"
+                    />
+                    
+                    {/* Autocomplete Dropdown */}
+                    {(searchResults.length > 0 || isSearching) && (
+                      <div className="absolute top-full mt-2 w-full bg-[#1A1A1A] border border-gray-700 rounded-2xl shadow-2xl overflow-hidden z-50">
+                        {isSearching ? (
+                          <div className="p-4 text-center text-gray-500 animate-pulse">Researching channels...</div>
+                        ) : (
+                          searchResults.map((chan) => (
+                            <div 
+                              key={chan.id}
+                              onClick={() => handleSelectChannel(chan.id)}
+                              className="flex items-center gap-4 p-4 border-b border-gray-800 hover:bg-gray-800 cursor-pointer transition-colors"
+                            >
+                              <img src={chan.avatar} alt={chan.name} className="w-12 h-12 rounded-full object-cover" />
+                              <div className="flex-1 text-left">
+                                <div className="font-bold text-white">{chan.name}</div>
+                                <div className="text-xs text-gray-400 flex gap-3">
+                                  <span>{chan.subscribers} subs</span>
+                                  <span>{chan.videosCount} videos</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  
                   {channelError && (
                     <p className="text-red-400 text-sm mt-2">{channelError}</p>
                   )}
@@ -447,7 +528,7 @@ const StylesModal: React.FC<StylesModalProps> = ({
                           : 'bg-cyan-400 hover:bg-cyan-300 text-black shadow-[0_0_20px_rgba(34,211,238,0.4)]'
                     }`}
                   >
-                    {isProcessingChannel ? 'Processing..' : 'Continue →'}
+                    {isProcessingChannel ? 'Researching..' : 'Continue →'}
                   </button>
                 </div>
               ) : (

@@ -75,13 +75,22 @@ const ParticleBackground: React.FC = () => {
     canvas.width = width;
     canvas.height = height;
 
-    let mouse = { x: width / 2, y: height / 2, radius: 150 };
+    let mouse = { x: width / 2, y: height / 2, radius: 100 }; // reduced radius for perf
     let particles: Particle[] = [];
+    
+    // Low end device detection rough heuristic
+    const isMobile = window.innerWidth < 768;
+    const isLowEnd = isMobile || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4);
 
     const init = () => {
       particles = [];
-      // Create a grid of particles
-      let numberOfParticles = (canvas.width * canvas.height) / 9000;
+      // Drastically reduce particles on low-end devices
+      let densityFactor = isLowEnd ? 40000 : 20000;
+      let numberOfParticles = (canvas.width * canvas.height) / densityFactor;
+      
+      // Cap at 100 particles for performance guarantee
+      if (numberOfParticles > 100) numberOfParticles = 100;
+
       for (let i = 0; i < numberOfParticles; i++) {
         let x = Math.random() * canvas.width;
         let y = Math.random() * canvas.height;
@@ -89,31 +98,53 @@ const ParticleBackground: React.FC = () => {
       }
     };
 
-    const animate = () => {
-      requestAnimationFrame(animate);
-      ctx.clearRect(0, 0, innerWidth, innerHeight);
+    let animationFrameId: number;
+    let lastRender = Date.now();
+    const fpsInterval = 1000 / (isLowEnd ? 30 : 60); // Cap FPS
 
-      for (let i = 0; i < particles.length; i++) {
-        particles[i].update();
-        particles[i].draw();
+    const animate = () => {
+      animationFrameId = requestAnimationFrame(animate);
+      
+      const now = Date.now();
+      const elapsed = now - lastRender;
+      
+      // Throttle framerate
+      if (elapsed > fpsInterval) {
+        lastRender = now - (elapsed % fpsInterval);
+        
+        ctx.clearRect(0, 0, innerWidth, innerHeight);
+
+        for (let i = 0; i < particles.length; i++) {
+          particles[i].update();
+          particles[i].draw();
+        }
+        
+        // Disable lines completely for performance, or only draw very close ones if high end
+        if (!isLowEnd) {
+             connect();
+        }
       }
-      connect();
     };
 
     const connect = () => {
       let opacityValue = 1;
       for (let a = 0; a < particles.length; a++) {
-        for (let b = a; b < particles.length; b++) {
-          let distance = ((particles[a].x - particles[b].x) * (particles[a].x - particles[b].x))
-            + ((particles[a].y - particles[b].y) * (particles[a].y - particles[b].y));
-          if (distance < (canvas.width / 7) * (canvas.height / 7)) {
-            opacityValue = 1 - (distance / 20000);
-            ctx.strokeStyle = `rgba(34, 211, 238, ${opacityValue * 0.2})`; // cyan tint
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(particles[a].x, particles[a].y);
-            ctx.lineTo(particles[b].x, particles[b].y);
-            ctx.stroke();
+        for (let b = a + 1; b < particles.length; b++) { // Optimized inner loop start
+          const dx = particles[a].x - particles[b].x;
+          const dy = particles[a].y - particles[b].y;
+          // Use Math.abs for quick bounding box check before expensive multiplication
+          if (Math.abs(dx) < 100 && Math.abs(dy) < 100) {
+            let distance = (dx * dx) + (dy * dy);
+            // hardcoded smaller threshold
+            if (distance < 10000) {
+              opacityValue = 1 - (distance / 10000);
+              ctx.strokeStyle = `rgba(34, 211, 238, ${opacityValue * 0.15})`;
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(particles[a].x, particles[a].y);
+              ctx.lineTo(particles[b].x, particles[b].y);
+              ctx.stroke();
+            }
           }
         }
       }
@@ -141,6 +172,7 @@ const ParticleBackground: React.FC = () => {
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(animationFrameId);
     };
   }, []);
 

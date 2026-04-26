@@ -36,62 +36,70 @@ const MASTER_TITLE_RULES = `
 6. **I-STATEMENT**: The creator is the active protagonist.
 `;
 
-const safeJsonParse = (text: string | undefined, fallback: any = {}) => {
+export const safeJsonParse = (text: string | undefined, fallback: any = {}) => {
     if (!text) return fallback;
     try {
-        // Extract JSON from markdown block if present
-        const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-        let cleaned = jsonMatch ? jsonMatch[1].trim() : text.trim();
-        
-        return JSON.parse(cleaned);
+        // Direct parse
+        return JSON.parse(text);
     } catch (e) {
-        // Attempt to fix common truncation issues (missing closing braces/brackets)
-        const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)(?:\s*```)?$/);
-        let fixedText = jsonMatch ? jsonMatch[1].trim() : text.trim();
-        
-        // Basic attempt to close JSON if it looks like an object or array
-        if ((fixedText.startsWith('{') || fixedText.startsWith('['))) {
-             let openBraces = 0;
-             let openBrackets = 0;
-             let inString = false;
-             
-             for (let i = 0; i < fixedText.length; i++) {
-                 if (fixedText[i] === '"' && fixedText[i-1] !== '\\') inString = !inString;
-                 if (!inString) {
-                     if (fixedText[i] === '{') openBraces++;
-                     else if (fixedText[i] === '}') openBraces--;
-                     else if (fixedText[i] === '[') openBrackets++;
-                     else if (fixedText[i] === ']') openBrackets--;
-                 }
-             }
-             
-             if (inString) {
-                 while (fixedText.endsWith('\\')) {
-                     fixedText = fixedText.slice(0, -1);
-                 }
-                 fixedText += '"';
-             }
-             while (openBraces > 0) { fixedText += '}'; openBraces--; }
-             while (openBrackets > 0) { fixedText += ']'; openBrackets--; }
-             
-             try {
-                 return JSON.parse(fixedText);
-             } catch (innerE) {
-                 // Still failed, try one more aggressive truncation fix
-                 try {
-                    const lastBrace = fixedText.lastIndexOf('}');
-                    const lastBracket = fixedText.lastIndexOf(']');
-                    const lastValidIndex = Math.max(lastBrace, lastBracket);
-                    if (lastValidIndex > 0) {
-                        return JSON.parse(fixedText.substring(0, lastValidIndex + 1));
+        try {
+            // First pass: extract json from markdown
+            let cleaned = text.trim();
+            const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+            if (jsonMatch) cleaned = jsonMatch[1].trim();
+            else {
+                // partial match
+                const partialMatch = text.match(/```(?:json)?\s*([\s\S]*?)(?:\s*```)?$/);
+                if (partialMatch) cleaned = partialMatch[1].trim();
+            }
+            return JSON.parse(cleaned);
+        } catch (e2) {
+            try {
+                let fixedText = text.trim();
+                const partialMatch = text.match(/```(?:json)?\s*([\s\S]*?)(?:\s*```)?$/);
+                if (partialMatch) fixedText = partialMatch[1].trim();
+
+                // Basic repair algorithm
+                if (fixedText.startsWith('{') || fixedText.startsWith('[')) {
+                    let openBraces = 0;
+                    let openBrackets = 0;
+                    let inString = false;
+                    let escape = false;
+
+                    for (let i = 0; i < fixedText.length; i++) {
+                        const char = fixedText[i];
+                        if (escape) {
+                            escape = false;
+                            continue;
+                        }
+                        if (char === '\\') {
+                            escape = true;
+                            continue;
+                        }
+                        if (char === '"') {
+                            inString = !inString;
+                            continue;
+                        }
+                        if (!inString) {
+                            if (char === '{') openBraces++;
+                            else if (char === '}') openBraces--;
+                            else if (char === '[') openBrackets++;
+                            else if (char === ']') openBrackets--;
+                        }
                     }
-                 } catch (finalE) {
-                    // Give up
-                 }
-             }
+
+                    if (inString) {
+                        fixedText += '"';
+                    }
+                    while (openBraces > 0) { fixedText += '}'; openBraces--; }
+                    while (openBrackets > 0) { fixedText += ']'; openBrackets--; }
+
+                    return JSON.parse(fixedText);
+                }
+            } catch (innerE) {
+                console.error("Critical JSON parse failure", innerE);
+            }
         }
-        
-        console.error("JSON Parse Error. Text preview:", text.substring(0, 200) + "...");
         return fallback;
     }
 };
@@ -145,7 +153,7 @@ export const checkProAccess = async (): Promise<boolean> => {
     return false;
 };
 
-export const wrapGeminiCall = async <T>(fn: () => Promise<T>, timeoutMs = 85000, maxRetries = 2): Promise<T> => {
+export const wrapGeminiCall = async <T>(fn: () => Promise<T>, timeoutMs = 150000, maxRetries = 1): Promise<T> => {
     let attempt = 0;
     while (attempt <= maxRetries) {
         try {
@@ -155,7 +163,6 @@ export const wrapGeminiCall = async <T>(fn: () => Promise<T>, timeoutMs = 85000,
             return await Promise.race([fn(), timeoutPromise]);
         } catch (error: any) {
             attempt++;
-            console.error(`Gemini API Error (Attempt ${attempt}/${maxRetries + 1}):`, error);
             
             let errorMsg = "";
             if (typeof error === 'string') {
@@ -172,32 +179,44 @@ export const wrapGeminiCall = async <T>(fn: () => Promise<T>, timeoutMs = 85000,
                 errorMsg = String(error);
             }
 
-            const isRetriableError = errorMsg.includes('timed out') || errorMsg.includes('503') || errorMsg.includes('Deadline expired') || errorMsg.includes('500') || errorMsg.includes('Rpc failed') || errorMsg.includes('xhr');
-            const isQuota = errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED");
+            const msgLower = errorMsg.toLowerCase();
+            const isRetriableError = msgLower.includes('timed out') || msgLower.includes('503') || msgLower.includes('deadline expired') || msgLower.includes('500') || msgLower.includes('rpc failed') || msgLower.includes('xhr');
+            const isOpenAiBilling = msgLower.includes("openai billing err") || msgLower.includes("billing hard limit");
+            const isQuota = msgLower.includes("429") || msgLower.includes("resource_exhausted") || msgLower.includes("quota") || isOpenAiBilling;
+            
+            if (!isQuota) {
+                console.error(`API Error (Attempt ${attempt}/${maxRetries + 1}):`, error);
+            }
 
             if (isQuota) {
+                if (isOpenAiBilling) {
+                    throw new Error("OpenAI API Billing Limit Reached: Please check your OpenAI account balance and add credits.");
+                }
                 const rotated = rotateApiKey();
-                if (rotated && attempt <= maxRetries) {
+                if (rotated) {
                     console.log("Quota exceeded. Retrying with next API key...");
                     await new Promise(resolve => setTimeout(resolve, 1000));
                     continue; // Retry with the new key
+                } else {
+                    // No new key to rotate to, fail instantly
+                    if (window.aistudio) {
+                        window.aistudio.openSelectKey();
+                    }
+                    throw new Error("API Quota Exceeded (429). Please select a different API key or try again later.");
                 }
             }
 
-            if (attempt <= maxRetries && (isRetriableError || isQuota)) {
-                const delay = isQuota ? 3000 : Math.pow(2, attempt) * 1000;
-                console.log(`Retrying in ${delay/1000}s due to ${isQuota ? 'Quota' : 'Network/Server Error'}...`);
+            if (attempt <= maxRetries && isRetriableError) {
+                const delay = Math.pow(2, attempt) * 1000;
+                console.log(`Retrying in ${delay/1000}s due to Network/Server Error...`);
                 await new Promise(resolve => setTimeout(resolve, delay));
                 continue;
             }
 
-            if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("403") || errorMsg.includes("permission") || isQuota) {
+            if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("403") || errorMsg.includes("permission")) {
                 if (window.aistudio) {
                     window.aistudio.openSelectKey();
                 }
-            }
-            if (isQuota) {
-                throw new Error("API Quota Exceeded. Please select a different API key or try again later.");
             }
             throw new Error(`AI Error: ${errorMsg || "Failed to communicate with AI"}`);
         }
@@ -218,7 +237,7 @@ export const isObjectOnly = async (base64Image: string): Promise<boolean> => {
     return wrapGeminiCall(async () => {
         const ai = getClient();
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-2.0-flash',
             contents: {
                 parts: [
                     { text: 'Analyze this image. Does it contain a person, human face, or any part of a human body? Answer strictly with YES or NO.' },
@@ -458,7 +477,7 @@ export const recreateThumbnail = async (base64Image: string, mimeType: string, p
 // ... (باقي الوظائف تبقى كما هي)
 const enhanceThumbnailPrompt = async (rawPrompt: string, inspirationImages?: string[]): Promise<{ visualDescription: string; suggestedTitle: string }> => {
     const ai = getClient();
-    const model = 'gemini-3-flash-preview';
+    const model = 'gemini-2.0-flash';
     
     const parts: any[] = [];
     
@@ -561,7 +580,7 @@ const enhanceThumbnailPrompt = async (rawPrompt: string, inspirationImages?: str
             config: { 
                 systemInstruction: systemPrompt,
                 responseMimeType: 'application/json',
-                maxOutputTokens: 4096,
+                maxOutputTokens: 8192,
                 tools: (!inspirationImages || inspirationImages.length === 0) ? [{ googleSearch: {} }] : undefined,
                 responseSchema: {
                     type: Type.OBJECT,
@@ -594,7 +613,8 @@ export const generateThumbnail = async (
     count: number = 1, 
     onImageGenerated?: (img: string, index: number, title: string) => void,
     styleVector?: any, 
-    personaEmbedding?: any
+    personaEmbedding?: any,
+    imageProvider: 'gemini' | 'openai' = 'gemini'
 ): Promise<{ images: string[]; suggestedTitle: string }> => {
     return wrapGeminiCall(async () => {
         const model = 'gemini-2.5-flash-image';
@@ -669,6 +689,31 @@ export const generateThumbnail = async (
         parts.push({ text: finalPrompt });
 
         const generateSingle = async () => {
+            if (imageProvider === 'openai') {
+                const response = await fetch('/api/generate-image-openai', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt: finalPrompt,
+                        n: 1,
+                        size: "1024x1024",
+                        response_format: "b64_json"
+                    })
+                });
+
+                if (!response.ok) {
+                    const errInfo = await response.json().catch(() => ({}));
+                    throw new Error(errInfo.error || `OpenAI API Error: ${response.status}`);
+                }
+
+                const result = await response.json();
+                const b64 = result.data?.[0]?.b64_json;
+                if (!b64) throw new Error("No image data received from OpenAI.");
+                
+                // We'll treat it as PNG
+                return await resizeImageTo1280x720(b64, 'image/png');
+            }
+
             const response = await ai.models.generateContent({
                 model: model,
                 contents: { parts },
@@ -702,7 +747,13 @@ export const generateThumbnail = async (
                 const img = await generateSingle();
                 images.push(img);
                 if (onImageGenerated) onImageGenerated(img, i, suggestedTitle);
-            } catch (err) {
+            } catch (err: any) {
+                const errMsg = typeof err === 'string' ? err : (err?.message || JSON.stringify(err) || String(err));
+                const msgLower = (errMsg || "").toLowerCase();
+                const isOpenAiBilling = msgLower.includes("openai billing err") || msgLower.includes("billing hard limit");
+                if (msgLower.includes("429") || msgLower.includes("resource_exhausted") || msgLower.includes("quota") || isOpenAiBilling) {
+                    throw err; // Fail fast on quota constraint
+                }
                 console.error(`Failed to generate image ${i + 1}/${count}:`, err);
                 if (images.length === 0 && i === count - 1) throw err;
             }
@@ -763,7 +814,7 @@ export const generateViralTitles = async (topic: string, lang: string = 'English
     return wrapGeminiCall(async () => {
         const ai = getClient();
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview', 
+            model: 'gemini-2.0-flash', 
             contents: `Generate 5 viral titles for topic "${topic}" in ${lang}. Return JSON array of {title, score}.`,
             config: { 
                 responseMimeType: 'application/json',
@@ -788,7 +839,7 @@ export const generateViralTitles = async (topic: string, lang: string = 'English
 export const generateMasterTitles = async (description: string, lang: string = 'Arabic'): Promise<{title: string, score: number}[]> => {
     return wrapGeminiCall(async () => {
         const ai = getClient();
-        const model = 'gemini-3-flash-preview';
+        const model = 'gemini-2.0-flash';
         
         const systemInstruction = `
         ROLE: World-Class YouTube Title Engineer (MrBeast Strategy).
@@ -811,7 +862,7 @@ export const generateMasterTitles = async (description: string, lang: string = '
             config: { 
                 systemInstruction,
                 responseMimeType: 'application/json',
-                maxOutputTokens: 2048,
+                maxOutputTokens: 8192,
                 responseSchema: {
                     type: Type.ARRAY,
                     items: {
@@ -832,27 +883,45 @@ export const generateMasterTitles = async (description: string, lang: string = '
 export const enhanceAndCompletePrompt = async (description: string, lang: string = 'Arabic'): Promise<string> => {
     return wrapGeminiCall(async () => {
         const ai = getClient();
-        const model = 'gemini-3-flash-preview';
+        const model = 'gemini-2.0-flash';
         
         const systemInstruction = `
-        ROLE: Expert Prompt Engineer for Image Generation.
-        MISSION: Take a raw video description and transform it into a highly effective visual prompt for an AI image generator.
+        ROLE: Expert YouTube thumbnail strategist.
+        MISSION: Your job is NOT to improve visuals only. Your job is to generate high-CTR thumbnail IDEAS based on the user's video concept.
         
-        STRATEGY:
-        1. Analyze the user's prompt and determine what is written and in what language.
-        2. **STRICT LANGUAGE PRESERVATION**: DO NOT translate the prompt to English. You MUST write the optimized prompt in the EXACT SAME LANGUAGE as the user's input (e.g., if it's in Arabic, the output MUST be in Arabic; if it's in French, the output MUST be in French).
-        3. Add necessary details (lighting, composition, subject focus) to make the description better and easier for the platform to understand, while staying in the ORIGINAL LANGUAGE.
-        4. Remove unnecessary details or conversational filler.
-        5. DO NOT add "hyper realistic", "photorealistic", "8k", or any specific style keywords like that. The platform already knows the strong Mr. Beast style and applies it automatically.
-        6. Focus purely on the subject, action, environment, and composition.
+        Follow these rules strictly:
+        Every idea must include:
+        - A clear action
+        - A strong consequence
+        - A time limit OR risk
         
-        RULES:
-        - MOUTH RULE: The subject's mouth MUST NOT be unnaturally wide open. A closed or slightly open mouth performs better.
-        - TEXT DISTILLATION: If the description explicitly contains a short, high-impact keyword, number, or timeframe (e.g., "50 Hours", "$100k"), you may extract it (1-3 words max) to place in the image. If it does NOT contain such specific hooks, DO NOT invent or add any text.
-        - BRAND ICONS & UI ELEMENTS: If the prompt mentions specific apps or UI elements, describe them as distinct, recognizable graphic elements floating or displayed clearly.
-        - Max 60 words.
+        Focus on psychological triggers:
+        - Fear (death, loss, danger)
+        - Greed (money, reward)
+        - Curiosity (unknown outcome)
+        - Urgency (countdown)
         
-        OUTPUT: Return ONLY the optimized prompt in the SAME LANGUAGE as the input.
+        Avoid generic ideas.
+        Reject anything that feels common or overused.
+        Each idea must be instantly understandable in 1 second.
+        Generate exactly 5 different ideas per thumbnail.
+        
+        Combine elements:
+        - danger + time
+        - money + risk
+        - decision + consequence
+        
+        Think like MrBeast:
+        The idea must be strong BEFORE visuals.
+        
+        **STRICT LANGUAGE PRESERVATION**: DO NOT translate to English if the user input is in another language (e.g., Arabic). The output MUST be in the EXACT SAME LANGUAGE as the user's input.
+        
+        Output format (Return ONLY this format):
+        Idea 1: [text]
+        Idea 2: [text]
+        Idea 3: [text]
+        Idea 4: [text]
+        Idea 5: [text]
         `;
 
         const response = await ai.models.generateContent({
@@ -909,7 +978,7 @@ export const describeImage = async (base64: string, mime: string, lang: string):
         const { data, mime: cleanMime } = await prepareImageForAPI(base64, mime);
         
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview', 
+            model: 'gemini-2.0-flash', 
             contents: { 
                 parts: [
                     { inlineData: { data, mimeType: cleanMime } }, 
@@ -950,7 +1019,7 @@ export const generateImageDescription = async (base64Image: string, mimeType: st
         `;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-2.0-flash',
             contents: {
                 parts: [
                     { inlineData: { data, mimeType: mime } },
@@ -966,7 +1035,7 @@ export const generateImageDescription = async (base64Image: string, mimeType: st
 export const analyzeStyleFromImages = async (base64Images: string[]): Promise<string> => {
     return wrapGeminiCall(async () => {
         const ai = getClient();
-        const model = 'gemini-3-flash-preview';
+        const model = 'gemini-2.0-flash';
         
         const parts: any[] = [
             { text: `ROLE: Expert YouTube Thumbnail Designer & Art Director.
@@ -998,7 +1067,7 @@ Return ONLY the style prompt text.` }
         const response = await ai.models.generateContent({
             model,
             contents: parts,
-            config: { maxOutputTokens: 1024 }
+            config: { maxOutputTokens: 4096 }
         });
 
         return response.text || "High contrast, vibrant colors, cinematic lighting, hyper-realistic.";
@@ -1025,23 +1094,38 @@ export const analyzeImage = async (base64: string, mime: string, mode: string, l
             prompt: title || "TRUTH ENGINE ANALYSIS"
         }, lang, mime);
 
-        const buildPillar = (name: string, score: number) => ({
-            name,
-            score,
-            status: score > 80 ? 'High' : (score > 50 ? 'Medium' : 'Low') as 'High' | 'Medium' | 'Low',
-            reasoning: ""
-        });
+        const buildPillar = (name: string, data: any) => {
+            const sd = data || {};
+            const score = sd.score || 0;
+            return {
+                name,
+                score: score,
+                status: score > 80 ? 'High' : (score > 50 ? 'Medium' : 'Low') as 'High' | 'Medium' | 'Low',
+                reasoning: sd.observation || "No observation available.",
+                details: {
+                    observation: sd.observation || "N/A",
+                    impact: sd.impact || "N/A",
+                    judgement: sd.judgement || "N/A",
+                    fix: sd.fix || "N/A"
+                }
+            };
+        };
 
         const pillarsArray = [
-            buildPillar("Clarity", result.pillars.clarity),
-            buildPillar("Emotion", result.pillars.emotion),
-            buildPillar("Curiosity", result.pillars.curiosity),
-            buildPillar("Contrast", result.pillars.contrast),
-            buildPillar("Composition", result.pillars.composition)
+            buildPillar("الوضوح", result.pillars.clarity),
+            buildPillar("المشاعر", result.pillars.emotion),
+            buildPillar("الفضول", result.pillars.curiosity),
+            buildPillar("التباين", result.pillars.contrast),
+            buildPillar("الابتكار", result.pillars.idea)
         ];
 
+        let finalSummaryStr = "Truth Engine score processed successfully. View detailed score.";
+        if (result.final_summary) {
+            finalSummaryStr = `### FINAL SUMMARY\n**Main Weakness:** ${result.final_summary.main_weakness}\n\n**Top 2 Fixes:**\n- ${(result.final_summary.top_2_fixes || []).join('\n- ')}`;
+        }
+
         return {
-            visual_description: "Truth Engine score processed successfully. View detailed score.",
+            visual_description: finalSummaryStr,
             ctr_score: result.score,
             pillars: pillarsArray,
             pros: [],
@@ -1082,161 +1166,80 @@ export const optimizeThumbnail = async (
             pastContext += `Use these past successes to inform your strategy for this new thumbnail.\n`;
         }
 
-        // Stage 1: Generate Concepts
-        let bestConcept: any = null;
-        let attempts = 0;
-        let conceptsLog: any[] = [];
-        
-        while (attempts < 2 && (!bestConcept || bestConcept.predictedCTR < 90)) {
-            const conceptPrompt = `
-            🎯 ROLE
-            You are an advanced AI Thumbnail Optimization Engine.
-            Your mission is to generate high-CTR thumbnail concepts based on the provided image and title.
+        // Stage 1: Generate Optimization Strategy
+        const optimizePrompt = `
+You are the ultimate 180-IQ YouTube thumbnail CTR optimization engine.
+You are not a single AI; you are an entire elite team of veteran image analysts, visual psychologists, and YouTube growth strategists with over 20 years of hardcore, in-the-trenches experience (a true master who "lost his teeth" in the game).
 
-            ${pastContext}
-            🧠 INPUT:
-            - Current Title: "${title}"
-            - Current Analysis: ${JSON.stringify(analysis.pillars)}
-            - Current Score: ${analysis.ctr_score}
-            
-            Follow this exact thought process:
-            1. Generate 3 completely different thumbnail concepts:
-               - Concept A: Safe / classic
-               - Concept B: Curiosity-driven
-               - Concept C: Extreme / shocking
-            
-            2. Predict CTR score (0-100) for each based on:
-               - clarity speed (<1s recognition)
-               - emotional intensity
-               - novelty (seen vs unseen)
-               - curiosity gap strength
-            
-            Return the 3 concepts and their predicted scores.
-            `;
+Your ONLY goal is to brutally analyze the thumbnail, surgically fix its weaknesses, and skyrocket its CTR score to the absolute maximum point easily.
 
-            const conceptResponse = await ai.models.generateContent({
-                model: 'gemini-3-flash-preview',
-                contents: {
-                    parts: [
-                        { inlineData: { data, mimeType: mime } },
-                        { text: conceptPrompt }
-                    ]
-                },
-                config: {
-                    responseMimeType: 'application/json',
-                    responseSchema: {
-                        type: Type.OBJECT,
-                        properties: {
-                            concepts: {
-                                type: Type.ARRAY,
-                                items: {
-                                    type: Type.OBJECT,
-                                    properties: {
-                                        name: { type: Type.STRING },
-                                        description: { type: Type.STRING },
-                                        predictedCTR: { type: Type.NUMBER }
-                                    },
-                                    required: ["name", "description", "predictedCTR"]
-                                }
-                            }
-                        },
-                        required: ["concepts"]
-                    }
-                }
-            });
+CRITICAL RULE: YOU MUST NOT CHANGE THE FUNDAMENTAL QUALITY AND IDENTITY OF THE IMAGE. YOU MUST PRESERVE ALL CORE ELEMENTS AND ADDITIONS (texts, specific faces, main background environment, symbols, brand logos) BUT ENHANCE THEIR IMPACT (lighting, size, contrast, emotional intensity, eye-bags to show exhaustion, brightened skin tones, etc). 
+ALL TEXT OUTPUT IN JSON MUST BE IN ${lang} EXCEPT 'prompt' WHICH MUST BE IN ENGLISH.
 
-            const conceptData = JSON.parse(conceptResponse.text || "{}");
-            const concepts = conceptData.concepts || [];
-            conceptsLog.push(concepts);
-            
-            if (concepts.length > 0) {
-                const currentBest = concepts.reduce((prev: any, current: any) => (prev.predictedCTR > current.predictedCTR) ? prev : current);
-                if (!bestConcept || currentBest.predictedCTR > bestConcept.predictedCTR) {
-                    bestConcept = currentBest;
-                }
-            }
-            attempts++;
-        }
+---
 
-        if (!bestConcept) {
-            bestConcept = { name: "Fallback", description: "A highly optimized, high-contrast YouTube thumbnail.", predictedCTR: 85 };
-        }
+## INPUT CONTEXT (IMPORTANT)
+Current Title: "${title}"
+${pastContext}
 
-        // Stage 2: Refine and Optimize the Best Concept
-        const refinePrompt = `
-        🎯 ROLE
-        You are an advanced AI Thumbnail Optimization Engine.
-        We have selected the following high-CTR thumbnail concept:
-        - Concept Name: ${bestConcept.name}
-        - Concept Description: ${bestConcept.description}
-        - Predicted CTR: ${bestConcept.predictedCTR}
+---
 
-        Now, apply the following optimization rules to this concept before generating the final prompt:
-        
-        1. Check if the concept looks similar to common YouTube patterns. IF similarity > threshold:
-           → FORCE a visual twist (unusual angle, unexpected element, abnormal scale, contradiction).
-           RULE: Familiar = ignored, Different = clicked
-        
-        2. Force extreme contrast (dark vs bright, rich vs poor, safe vs danger, normal vs abnormal).
-           IF contrast is medium:
-           → exaggerate it further.
-           RULE: Moderate contrast = mid CTR, Extreme contrast = viral CTR
-        
-        3. Ensure visual path. Eye flow must be:
-           1. Face / main subject
-           2. Secondary object
-           3. Curiosity element
-           IF no clear path:
-           → redesign layout.
-        
-        4. Compress text. IF text > 3 words:
-           → compress to 1–2 words OR symbols (e.g., "$0 → $1M" instead of "ZERO TO MILLION").
-           RULE: Reading kills speed, Symbols boost speed
-        
-        5. Detect visual overload. IF elements > 3:
-           → auto-remove lowest impact element until 2–3 elements only.
-        
-        6. Blur thumbnail mentally. Ask: "Can I still understand the idea?"
-           IF NO:
-           → rebuild thumbnail.
+## STEP 1: DEEP ANALYSIS & PSYCHOLOGY (180 IQ Level)
+Analyze the thumbnail precisely identifying specific elements (e.g., "The narrator's face", "The car background", "The 10 PM text", "The Elon Musk figure", "The green outlines"). Determine what is visually noisy and what needs psychological amplification.
 
-        ✍️ STEP 7: FINAL PROMPT ENGINE
-        Based on the surviving, highly-optimized concept, generate the final image generation prompt.
-        
-        🧠 EXPLANATION SYSTEM:
-        Explain: What was wrong originally, what changed in this new concept, what visual twists/contrast/path optimizations were applied, and why it improves CTR.
-        
-        OUTPUT JSON FORMAT:
-        {
-            "prompt": "The detailed image generation prompt for the final selected concept...",
-            "suggestedTitle": "A new, better title (optional, keep original if good)",
-            "explanation": "What was wrong, what changed, and why it improves CTR..."
-        }
+## STEP 2: SURGICAL TRANSFORMATION (VIRAL FIX)
+Formulate the exact, surgical changes. Think like a master editor advising an AI:
+- REMOVE: Clutter, extra background people, secondary logos that create noise.
+- ADD: A subtle silhouette, a question mark, glowing edges, dramatic shadows to raise the curiosity gap.
+- CHANGE: Shift skin tones (e.g., to desaturated/gray for exhaustion, or bright/warm for success), increase contrast in the eyes, enlarge text by 15%-25% for mobile readability.
+- POSITION: Center the main focal point, group elements logically.
+
+## STEP 3: FINAL OUTPUT FORMAT
+Provide your output strictly in JSON format matching the schema below.
+IMPORTANT: The 'prompt' field MUST BE IN ENGLISH and MUST BE WRITTEN AS A DIRECT, EXTREMELY SPECIFIC INSTRUCTION TO AN IMAGE EDITOR AI. (e.g., "Increase the size of '8 AM' text by 25% for mobile readability. Amplify lighting contrast... Increase visible exhaustion in the subject's expression... Remove the background person on the right to declutter..."). It must instruct the AI to KEEP the original essence and core elements but apply these exact visual changes.
+
+{
+    "explanation": "Summarize the exact transformation and edits you are applying and why they increase CTR. (e.g., 'Removed clutter, brightened face, added dark circles to show transformation.'). Must be in ${lang}.",
+    "prompt": "The detailed English instruction/prompt for the image generator. MUST start with: 'Keep the original image layout, faces, texts, and elements intact, but apply the following changes: ' followed by your surgical, localized edits.",
+    "suggestedTitle": "A new, highly clickable viral title for the video.",
+    "appliedTwists": ["Twist 1: <desc>", "Twist 2: <desc>"],
+    "concepts": [{"name": "Optimized Concept", "description": "Layout strategy", "predictedCTR": 95}]
+}
         `;
 
         const refineResponse = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-2.0-flash',
             contents: {
                 parts: [
                     { inlineData: { data, mimeType: mime } },
-                    { text: refinePrompt }
+                    { text: optimizePrompt }
                 ]
             },
             config: {
+                maxOutputTokens: 8192,
                 responseMimeType: 'application/json',
                 responseSchema: {
                     type: Type.OBJECT,
                     properties: {
                         prompt: { type: Type.STRING },
                         suggestedTitle: { type: Type.STRING },
-                        explanation: { type: Type.STRING }
+                        explanation: { type: Type.STRING },
+                        appliedTwists: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        concepts: { 
+                            type: Type.ARRAY, 
+                            items: { 
+                                type: Type.OBJECT, 
+                                properties: { name: { type: Type.STRING }, description: { type: Type.STRING }, predictedCTR: { type: Type.NUMBER } },
+                                required: ["name", "description", "predictedCTR"]
+                            } 
+                        }
                     },
                     required: ["prompt", "explanation"]
                 }
             }
         });
 
-        const strategyData = JSON.parse(refineResponse.text || "{}");
+        const strategyData = safeJsonParse(refineResponse.text || "{}");
         const finalPrompt = strategyData.prompt || "A highly optimized YouTube thumbnail.";
         const explanation = strategyData.explanation || "Optimized for higher CTR.";
         const newTitle = strategyData.suggestedTitle || title;
@@ -1247,10 +1250,15 @@ export const optimizeThumbnail = async (
             contents: {
                 parts: [
                     { inlineData: { data, mimeType: mime } },
-                    { text: `[STYLE: MrBeast] ${finalPrompt}. High contrast, vibrant colors, clear subject, emotional face, readable text.` }
+                    { text: `Based on the provided input image, precisely apply these viral enhancements while keeping the core quality, main subject identity, and exact structure intact. [ENHANCEMENT PROMPT]: ${finalPrompt}. High contrast, vibrant colors, clear subject, emotional face, readable text.` }
                 ]
-            }
+            },
+            config: { imageConfig: { aspectRatio: '16:9' } }
         });
+
+        if (imageResponse.candidates?.[0]?.finishReason === 'SAFETY') {
+            throw new Error("Optimization blocked by safety filters. Trying a safer request is recommended.");
+        }
 
         let newImageBase64 = '';
         for (const part of imageResponse.candidates?.[0]?.content?.parts || []) {
@@ -1261,6 +1269,7 @@ export const optimizeThumbnail = async (
         }
 
         if (!newImageBase64) {
+            console.log(JSON.stringify(imageResponse));
             throw new Error("Failed to generate optimized image.");
         }
 
@@ -1274,7 +1283,7 @@ export const optimizeThumbnail = async (
             promptUsed: finalPrompt,
             newScore: newAnalysis.ctr_score,
             newPillars: newAnalysis.pillars,
-            concepts: conceptsLog[0] || [],
+            concepts: strategyData.concepts || [],
             appliedTwists: strategyData.appliedTwists || []
         };
     });
@@ -1284,7 +1293,7 @@ export const generateMasterStrategy = async (idea: string, lang: string): Promis
     return wrapGeminiCall(async () => {
         const ai = getClient();
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview', 
+            model: 'gemini-2.0-flash', 
             contents: `Create a Master YouTube Strategy for the idea: "${idea}" in ${lang}. 
             Provide a viral title, thumbnail concept, and 3 key psychological hooks.`,
             config: { 
@@ -1310,7 +1319,7 @@ export const enhancePrompt = async (rawPrompt: string): Promise<string> => {
       const ai = getClient();
       
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview', 
+        model: 'gemini-2.0-flash', 
         contents: `Role: You are a Prompt Enhancer, not a Prompt Generator.
 
 STRICT RULES:
@@ -1353,7 +1362,7 @@ Enhanced version only.`,
 export const getChatResponse = async (message: string, images?: string[]): Promise<string> => {
     return wrapGeminiCall(async () => {
         const ai = getClient(); 
-        const model = 'gemini-3-flash-preview';
+        const model = 'gemini-2.0-flash';
         
         const parts: any[] = [];
         if (images && images.length > 0) {
@@ -1457,32 +1466,47 @@ export const oneClickFix = async (base64Image: string, mimeType: string, analysi
         const weaknesses = analysis?.pillars?.filter((p: any) => p.score < 90).map((p: any) => p.name).join(', ') || '';
         const strengths = analysis?.pillars?.filter((p: any) => p.score >= 90).map((p: any) => p.name).join(', ') || '';
 
-        const promptText = `You are a YouTube thumbnail expert.
-Rebuild the input thumbnail to maximize click-through rate based on the analysis.
+        const promptText = `You are an advanced thumbnail optimization system.
+You will run the 'One Viral Fix' pipeline on this image to maximize CTR.
 
-${contextStr ? `CONTEXT:\n${contextStr}\n` : ''}
+PHASE 1 — ANALYSIS
+- Segment image into: subject, background, objects, text
+- Score: Clarity, Hierarchy, Emotion, Contrast, Curiosity
+(Current Weaknesses identified: ${weaknesses || 'General: create a clear focal point, simplify background'})
 
-CURRENT ANALYSIS:
-- Strengths to PRESERVE (Score >= 90%): ${strengths || 'None identified.'}
-- Weaknesses to FIX (Score < 90%): ${weaknesses || 'None identified. Just make it more viral.'}
+PHASE 2 — DECISION (multi-fix)
+- If clarity < 70 -> remove clutter + simplify background
+- If subject is weak -> enlarge + enhance lighting
+- If no focal point -> create strong contrast focus
+- If emotion weak -> enhance eyes + facial intensity
+- If curiosity low -> add minimal hook (contrast, symbol, split)
 
-DECISION PRIORITY SYSTEM:
-1. Focus on fixing the identified weaknesses to push their scores above 90%.
-2. CRITICAL CONSTRAINT: Do not degrade the identified strengths. Keep them exactly as they are or better.
-3. To fix weaknesses like 'Curiosity Gap', you MUST change multiple elements: enhance text, exaggerate facial expressions, improve color contrast, simplify the visual layout, and ensure clarity when scaled down.
-4. The new version must be a highly viral, click-optimized thumbnail.
+PHASE 3 — EXECUTION & CONSTRAINTS
+- Apply ONLY mask-based local edits (mentally simulate Stable Diffusion inpainting).
+- CONSTRAINT: Apply a maximum of 2–3 major edits only. Prioritize highest impact changes. Avoid over-editing.
+- FOCUS RULE: There must be ONLY ONE dominant focal point. All other elements must support it or be removed.
+- MOBILE VISIBILITY CHECK: Ensure the subject is clearly visible at a small size. Remove or enlarge elements that are not readable on mobile.
+- Allowed: remove / replace background / enhance subject / adjust contrast / add minimal cues
+- Keep max 3-4 elements overall
+- Maintain realism (lighting, shadows, perspective)
 
-STRUCTURAL PRESERVATION (CRITICAL):
-- You MUST maintain the overall structure and composition of the original image.
-- You can change the shooting angle slightly or replace specific elements, but the fundamental perspective and layout MUST remain the same.
+PHASE 4 — STYLE VARIATION
+- Randomly choose a style:
+  - dark cinematic
+  - bright youtube
+  - high contrast neon
 
-Apply these improvements carefully:
-- Add strong emotional expression ONLY if emotion is a weakness.
-- Create one clear focal point.
-- Replace weak elements with stronger ones if needed.
-- Use bold, minimal text (max 3-4 words).
+PHASE 5 — RE-EVALUATION
+- Re-score image mentally
+- If score < 80 -> apply one more simplification pass
 
-Output a high-performing thumbnail that looks viral and modern. NO LETTERBOXING.`;
+PHASE 6 — OUTPUT (STRICT)
+- Return ONLY the final optimized image.
+- Overlay the predicted CTR score (e.g. 96%) at the top-left of the image clearly.
+- DO NOT display any text explanation.
+- DO NOT show the 5 pillars.
+- DO NOT show labels like "One Viral Fix".
+- Just the image data. NO markdown. NO JSON.`;
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
@@ -1524,7 +1548,7 @@ export const validateUploadedObject = async (base64Image: string, mimeType: stri
         If NO (it is an object, item, background, vehicle, book, laptop, etc. without people), respond with: ACCEPTED| followed by a very short, specific 2-5 word description of the main object (e.g., 'ACCEPTED|Red gaming laptop' or 'ACCEPTED|Old leather book').`;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-2.0-flash',
             contents: [
                 prompt,
                 { inlineData: { data, mimeType: mime } }
@@ -1579,6 +1603,8 @@ export const editThumbnail = async (base64Image: string, mimeType: string, promp
              instructionText += `\n\nCRITICAL FACE PRESERVATION INSTRUCTION:\n- DO NOT alter the face in any way.\n- The face must remain 100% identical to the original image.\n- Do not add or change any facial features, hair, or expressions.\n- ONLY modify the specific elements requested in the prompt.`;
          }
 
+         instructionText += `\n\nABSOLUTE REQUIREMENT: You are an image generation model. You MUST generate and return the final edited image. UNDER NO CIRCUMSTANCES should you return JSON, markdown, bounding boxes, or text descriptions. Output ONLY the raw generated image part.`;
+
          parts.push({ text: instructionText });
 
          const response = await ai.models.generateContent({
@@ -1609,7 +1635,7 @@ export const editThumbnail = async (base64Image: string, mimeType: string, promp
 export const generateBeastConcepts = async (idea: string, lang: string = 'Arabic'): Promise<BeastConcept[]> => {
     return wrapGeminiCall(async () => {
         const ai = getClient();
-        const model = 'gemini-3-flash-preview';
+        const model = 'gemini-2.0-flash';
         
         const systemInstruction = `
         ROLE: AI Orchestrator Agent (Beast Mode).
@@ -1634,7 +1660,7 @@ export const generateBeastConcepts = async (idea: string, lang: string = 'Arabic
             config: { 
                 systemInstruction,
                 responseMimeType: 'application/json',
-                maxOutputTokens: 3072,
+                maxOutputTokens: 8192,
                 responseSchema: {
                     type: Type.ARRAY,
                     items: {
@@ -1662,7 +1688,7 @@ export const generateBeastConcepts = async (idea: string, lang: string = 'Arabic
 export const engineerBeastVisual = async (concept: BeastConcept, lang: string = 'Arabic'): Promise<BeastVisualEngineering> => {
     return wrapGeminiCall(async () => {
         const ai = getClient();
-        const model = 'gemini-3-flash-preview';
+        const model = 'gemini-2.0-flash';
         
         const systemInstruction = `
         ROLE: Visual Psychology Agent.
@@ -1684,7 +1710,7 @@ export const engineerBeastVisual = async (concept: BeastConcept, lang: string = 
             config: { 
                 systemInstruction,
                 responseMimeType: 'application/json',
-                maxOutputTokens: 2048,
+                maxOutputTokens: 8192,
                 responseSchema: {
                     type: Type.OBJECT,
                     properties: {
@@ -1705,7 +1731,7 @@ export const engineerBeastVisual = async (concept: BeastConcept, lang: string = 
 export const simulateBeastCTR = async (concept: BeastConcept, engineering: BeastVisualEngineering, lang: string = 'Arabic'): Promise<BeastSimulation> => {
     return wrapGeminiCall(async () => {
         const ai = getClient();
-        const model = 'gemini-3-flash-preview';
+        const model = 'gemini-2.0-flash';
         
         const systemInstruction = `
         ROLE: Testing Agent.
@@ -1726,7 +1752,7 @@ export const simulateBeastCTR = async (concept: BeastConcept, engineering: Beast
             config: { 
                 systemInstruction,
                 responseMimeType: 'application/json',
-                maxOutputTokens: 2048,
+                maxOutputTokens: 8192,
                 responseSchema: {
                     type: Type.OBJECT,
                     properties: {
@@ -1746,7 +1772,7 @@ export const transcribeAudio = async (base64Audio: string, mimeType: string): Pr
     return wrapGeminiCall(async () => {
         const ai = getClient();
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-2.0-flash',
             contents: [
                 {
                     parts: [
@@ -1769,7 +1795,7 @@ export const generateAudioSummary = async (ctx: any, lang: string): Promise<stri
         
         // 1. Generate a concise text summary first using a standard model
         const textSummaryResponse = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-2.0-flash',
             contents: `Summarize the following YouTube thumbnail analysis data into a concise, energetic 2-3 sentence script for a viral strategist to read aloud in ${lang}. Focus on the most important strengths and weaknesses. Data: ${JSON.stringify(ctx)}`,
             config: {
                 maxOutputTokens: 512
@@ -1780,7 +1806,7 @@ export const generateAudioSummary = async (ctx: any, lang: string): Promise<stri
 
         // 2. Pass the text summary to the TTS model
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-preview-tts',
+            model: 'gemini-3.1-flash-tts-preview',
             contents: [{ parts: [{ text: textToSpeak }] }],
             config: { 
                 responseModalities: [Modality.AUDIO],
